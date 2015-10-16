@@ -45,6 +45,8 @@
 #include <CGAL/internal/AFSR/construct_polyhedron.h>
 #include <CGAL/internal/AFSR/write_triple_indices.h>
 
+#include <CGAL/Progress_tracker.h>
+
 namespace CGAL {
 
   // This iterator allows to visit all contours. It has the particularity
@@ -312,6 +314,9 @@ namespace CGAL {
     typedef typename Triangulation_3::Vertex::Incidence_request_iterator Incidence_request_iterator;
     typedef typename Triangulation_3::Vertex::Incidence_request_elt Incidence_request_elt;
 
+
+    typedef CGAL::Abstract_progress_tracker<Extract> Progress_tracker;
+    
     typedef std::pair< Vertex_handle, Vertex_handle > Edge_like;
     typedef CGAL::Triple< Vertex_handle, Vertex_handle, Vertex_handle > Facet_like;
 
@@ -379,6 +384,8 @@ namespace CGAL {
     std::list<Next_border_elt> nbe_pool;
     std::list<Intern_successors_type> ist_pool;
 
+    std::set<Progress_tracker*> progress_trackers;
+    std::size_t number_of_facets_done;
 
     Intern_successors_type* new_border()
     {
@@ -599,7 +606,8 @@ namespace CGAL {
 
     void initialize_vertices_and_cells()
     {
-
+      number_of_facets_done = 0;
+      
       Incidence_request_elt ire;
       incidence_requests.clear();
       incidence_requests.push_back(ire);
@@ -743,6 +751,7 @@ namespace CGAL {
            Described in Section \ref AFSR_Selection
 
     */
+
     void run(double radius_ratio_bound=5, double beta= 0.52)
     {
       K = radius_ratio_bound;
@@ -2048,6 +2057,7 @@ namespace CGAL {
                         }
                     }
                 }
+              notify_progress_trackers();
             }
           while((!_ordered_border.empty())&&
                 (_ordered_border.begin()->first < STANDBY_CANDIDATE_BIS));
@@ -2331,6 +2341,8 @@ namespace CGAL {
           { }
         return false;
       }
+
+      
     };
 
 
@@ -2427,6 +2439,31 @@ namespace CGAL {
       postprocess_timer.stop();
       return true;
     }
+
+
+    void attach_tracker (Progress_tracker* tracker)
+    {
+      progress_trackers.insert (tracker);
+      tracker->attach (this);
+    }
+    void detach_tracker (Progress_tracker* tracker)
+    {
+      progress_trackers.erase (tracker);
+    }
+    
+    void notify_progress_trackers () const
+    {
+      for (typename std::set<Progress_tracker*>::iterator it = progress_trackers.begin ();
+           it != progress_trackers.end (); ++ it)
+        (*it)->notify();
+    }
+
+    double progress () const
+    {
+      return number_of_facets_done / (double)(T.number_of_facets ());
+    }
+    
+
 
   }; // class Advancing_front_surface_reconstruction
 
@@ -2562,7 +2599,11 @@ namespace CGAL {
     Triangulation_3 dt( boost::make_transform_iterator(b, AFSR::Auto_count_cc<Point_3,CC>(cc)),
                         boost::make_transform_iterator(e, AFSR::Auto_count_cc<Point_3,CC>(cc) )  );
 
+    
     Reconstruction R(dt, filter);
+    CGAL::Simple_progress_tracker<Reconstruction> tracker;
+
+    R.attach_tracker (&tracker);
     R.run(radius_ratio_bound, beta);
     write_triple_indices(out, R);
     return out;
