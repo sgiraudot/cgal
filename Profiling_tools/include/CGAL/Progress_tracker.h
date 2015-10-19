@@ -8,26 +8,8 @@ namespace CGAL {
 template <typename Observed>
 class Abstract_progress_tracker
 {
-protected:
-  std::set<Observed*> m_observed;
-  
 public:
-
-  Abstract_progress_tracker () { }
-  virtual ~Abstract_progress_tracker () { }
-
-  void attach (Observed* o)
-  {
-    m_observed.insert (o);
-  }
-  void detach (Observed* o)
-  {
-    m_observed.erase (o);
-  }
-                
-  
-  virtual void notify () = 0;
-
+  virtual void notify (const Observed* obs) = 0;
 };
 
 
@@ -35,6 +17,7 @@ template <typename Observed>
 class Simple_progress_tracker : public Abstract_progress_tracker<Observed>
 {
 private:
+  
   unsigned int m_refresh_time;
   unsigned int m_latest;
   
@@ -47,23 +30,21 @@ public:
   }
   virtual ~Simple_progress_tracker () { }
 
-  void notify ()
+  
+  virtual void notify (const Observed* obs)
   {
     unsigned int current = time (NULL);
     
     if (current < m_latest + m_refresh_time)
       return;
-
-    for (typename std::set<Observed*>::iterator it = this->m_observed.begin ();
-         it != this->m_observed.end (); ++ it)
-      {
-        std::cerr << "\r" << 100. * (*it)->progress () << "% done";
-      }
+    
+    std::cerr << "\r" << (unsigned int)(100. * obs->progress ()) << "% done";
 
     m_latest = time (NULL);
   }
 
 };
+
 
 
 } // namespace CGAL
