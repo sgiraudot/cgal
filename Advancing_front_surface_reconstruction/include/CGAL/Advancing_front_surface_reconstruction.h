@@ -313,7 +313,7 @@ namespace CGAL {
 
     typedef typename Triangulation_3::Vertex::Incidence_request_iterator Incidence_request_iterator;
     typedef typename Triangulation_3::Vertex::Incidence_request_elt Incidence_request_elt;
-
+ 
 
     typedef CGAL::Abstract_progress_tracker<Extract> Progress_tracker;
     
@@ -383,9 +383,6 @@ namespace CGAL {
     typename std::list<Vertex_handle>::iterator ie_sentinel;
     std::list<Next_border_elt> nbe_pool;
     std::list<Intern_successors_type> ist_pool;
-
-    std::set<Progress_tracker*> progress_trackers;
-    std::size_t number_of_facets_done;
 
     Intern_successors_type* new_border()
     {
@@ -606,7 +603,6 @@ namespace CGAL {
 
     void initialize_vertices_and_cells()
     {
-      number_of_facets_done = 0;
       
       Incidence_request_elt ire;
       incidence_requests.clear();
@@ -752,7 +748,8 @@ namespace CGAL {
 
     */
 
-    void run(double radius_ratio_bound=5, double beta= 0.52)
+    void run(double radius_ratio_bound=5, double beta= 0.52,
+             Progress_tracker* tracker = NULL)
     {
       K = radius_ratio_bound;
       COS_BETA = cos(beta);
@@ -769,7 +766,7 @@ namespace CGAL {
             {
               //std::cerr << "Growing connected component " << _number_of_connected_components << std::endl;
               extend_timer.start();
-              extend();
+              extend(tracker);
               extend_timer.stop();
 
               if ((number_of_facets() > static_cast<int>(T.number_of_vertices()))&&
@@ -1992,7 +1989,7 @@ namespace CGAL {
 
     //---------------------------------------------------------------------
     void
-    extend()
+    extend(Progress_tracker* tracker = NULL)
     {
       // initilisation de la variable globale K: qualite d'echantillonnage requise
       K = K_init; // valeur d'initialisation de K pour commencer prudemment...
@@ -2057,7 +2054,7 @@ namespace CGAL {
                         }
                     }
                 }
-              notify_progress_trackers();
+              notify_tracker (tracker);
             }
           while((!_ordered_border.empty())&&
                 (_ordered_border.begin()->first < STANDBY_CANDIDATE_BIS));
@@ -2441,27 +2438,17 @@ namespace CGAL {
     }
 
 
-    void attach_tracker (Progress_tracker* tracker)
+    void notify_tracker (Progress_tracker* tracker) const
     {
-      progress_trackers.insert (tracker);
-      tracker->attach (this);
+      if (tracker != NULL)
+        tracker->notify (this);
     }
-    void detach_tracker (Progress_tracker* tracker)
-    {
-      progress_trackers.erase (tracker);
-    }
-    
-    void notify_progress_trackers () const
-    {
-      for (typename std::set<Progress_tracker*>::iterator it = progress_trackers.begin ();
-           it != progress_trackers.end (); ++ it)
-        (*it)->notify();
-    }
-
     double progress () const
     {
-      return number_of_facets_done / (double)(T.number_of_facets ());
+      return _facet_number / (double)(T.number_of_facets ());
     }
+      
+      
     
 
 
@@ -2601,10 +2588,11 @@ namespace CGAL {
 
     
     Reconstruction R(dt, filter);
-    CGAL::Simple_progress_tracker<Reconstruction> tracker;
+    //    CGAL::Ascii_bar_progress_tracker<Reconstruction> tracker;
+    //    CGAL::Simple_remaining_time_progress_tracker<Reconstruction> tracker;
+    CGAL::Ascii_bar_with_remaining_time_progress_tracker<Reconstruction> tracker;
 
-    R.attach_tracker (&tracker);
-    R.run(radius_ratio_bound, beta);
+    R.run(radius_ratio_bound, beta, &tracker);
     write_triple_indices(out, R);
     return out;
   }
