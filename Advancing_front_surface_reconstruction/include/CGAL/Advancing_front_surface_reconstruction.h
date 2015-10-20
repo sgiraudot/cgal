@@ -362,6 +362,7 @@ namespace CGAL {
     //pour retenir les facettes selectionnees
     int _vh_number;
     int _facet_number;
+    int _facets_done;
 
     //---------------------------------------------------------------------
     //Pour le post traitement
@@ -751,6 +752,8 @@ namespace CGAL {
     void run(double radius_ratio_bound=5, double beta= 0.52,
              Progress_tracker* tracker = NULL)
     {
+      _facets_done = 0;
+      
       K = radius_ratio_bound;
       COS_BETA = cos(beta);
       if(T.dimension() < 3){
@@ -1725,7 +1728,8 @@ namespace CGAL {
                   dec_mark(c->vertex(i));
 
                   select_facet(c, edge_Efacet.second);
-
+                  validate_progress (edge_Efacet);
+      
                   return FINAL_CASE;
                 }
               //---------------------------------------------------------------------
@@ -1739,7 +1743,8 @@ namespace CGAL {
                             ordered_key, v1, v2, edge_Ifacet_2);
 
                   select_facet(c, edge_Efacet.second);
-
+                  validate_progress (edge_Efacet);
+                  
                   return EAR_CASE;
                 }
               //---------------------------------------------------------------------
@@ -1751,7 +1756,8 @@ namespace CGAL {
                   merge_ear(ordered_el2, result2,
                             ordered_key, v2, v1, edge_Ifacet_1);
                   select_facet(c, edge_Efacet.second);
-
+                  validate_progress (edge_Efacet);
+                  
                   return EAR_CASE;
                 }
 
@@ -1792,7 +1798,8 @@ namespace CGAL {
                       _ordered_border.insert(Radius_ptr_type(e2.first, p2));
 
                       select_facet(c, edge_Efacet.second);
-
+                      validate_progress (edge_Efacet);
+                      
                       return EXTERIOR_CASE;
                     }
                   else // c->vertex(i) is a border point (and now there's only 1
@@ -1940,6 +1947,7 @@ namespace CGAL {
 			  }
 		      }
 		    select_facet(c, edge_Efacet.second);
+                    validate_progress (edge_Efacet);
 		    return CONNECTING_CASE;
 		  }
                 }
@@ -2445,9 +2453,20 @@ namespace CGAL {
     }
     double progress () const
     {
-      return _facet_number / (double)(T.number_of_facets ());
+      return _facets_done / (double)(T.number_of_facets ());
     }
-      
+    void validate_progress (const Edge_incident_facet& edge_Efacet)
+    {
+      Facet_circulator start = T.incident_facets (edge_Efacet.first),
+        circ = start;
+      do
+        {
+          ++ _facets_done;
+          ++ circ;
+        }
+      while (circ != start);
+    }
+                           
       
     
 
