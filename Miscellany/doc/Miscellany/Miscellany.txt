@@ -26,6 +26,10 @@ counts the number of calls of the `start()` member function since the
 last reset. If the reset occurs while the timer is running it counts as the
 first interval.
 
+\section MiscellanyProgress Progress Trackers
+
+\todo TODO
+
 \section MiscellanyMemory Memory Size
 
 \cgal provides access to the memory size used by the program with the

@@ -1,0 +1,140 @@
+
+namespace CGAL {
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Abstract_progress_tracker` is an abstract class for keeping
+track of the progresses of algorithm. 
+
+*/
+
+
+template <typename Observed>
+class Abstract_progress_tracker
+{
+public:
+  virtual void notify (const Observed* obs) = 0;
+};
+
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Simple_progress_tracker` is an implementation of
+`Abstract_progress_tracker` which displays the progress of the
+observed algorithm on the standard error output.
+
+*/
+
+template <typename Observed>
+class Simple_progress_tracker : public Abstract_progress_tracker<Observed>
+{
+public:
+
+  Simple_progress_tracker (time_t refresh_time = 1); // Default = update every 1 second
+  virtual void notify (const Observed* obs);
+};
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Ascii_bar_progress_tracker` is an implementation of
+`Abstract_progress_tracker` which displays the progress of the
+observed algorithm on the standard error output in the form of an
+ASCII progress bar.
+
+*/
+
+  
+template <typename Observed>
+class Ascii_bar_progress_tracker : public Abstract_progress_tracker<Observed>
+{
+public:
+
+  Ascii_bar_progress_tracker (time_t refresh_time = 1, // Default = update every 1 second
+                              unsigned int width = 50);  // Width of progress bar
+  
+  virtual void notify (const Observed* obs);
+
+};
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Abstract_remaining_time_progress_tracker` is a
+specialization of `Abstract_progress_tracker` which provides
+additional methods to estimate the remaining time and to display a
+readable time string.
+
+*/
+
+
+
+template <typename Observed>
+class Abstract_remaining_time_progress_tracker : public Abstract_progress_tracker<Observed>
+{
+
+public:
+
+  virtual void notify (const Observed* obs) = 0;
+
+  time_t remaining_time (time_t time_done,
+                         double fraction_done) const;
+
+  template <typename Stream>
+  void display_time (Stream& stream, time_t seconds) const;
+
+};
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Simple_remaining_time_progress_tracker` is an
+implementation of `Abstract_remaining_time_progress_tracker` which
+displays the progress of the observed algorithm and the estimated
+remaining time on the standard error output.
+
+*/
+
+  
+template <typename Observed>
+class Simple_remaining_time_progress_tracker
+  : public Abstract_remaining_time_progress_tracker<Observed>
+{
+public:
+
+  Simple_remaining_time_progress_tracker (time_t refresh_time = 1); // Default = update every 1 second
+  
+  virtual void notify (const Observed* obs);
+};
+
+/*!
+\ingroup PkgProfilingTools
+
+The class `Ascii_bar_with_remaining_time_progress_tracker` is an
+implementation of `Abstract_remaining_time_progress_tracker` which
+displays the progress of the observed algorithm and the estimated
+remaining time on the standard error output in the form of an ASCII
+progress bar.
+
+*/
+
+
+template <typename Observed>
+class Ascii_bar_with_remaining_time_progress_tracker
+  : public Abstract_remaining_time_progress_tracker<Observed>
+{
+public:
+
+  Ascii_bar_with_remaining_time_progress_tracker (time_t refresh_time = 1, // Default = update every 1 second
+                                                  unsigned int width = 30);  // Width of progress bar
+  virtual void notify (const Observed* obs);
+
+};
+
+  
+
+
+} // namespace CGAL
+
