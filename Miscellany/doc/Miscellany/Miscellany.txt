@@ -28,7 +28,27 @@ first interval.
 
 \section MiscellanyProgress Progress Trackers
 
-\todo TODO
+Some of the algorithms of the \cgal library require long computations
+for large data sets. For this reason, the user might want to keep
+track of the state of progress of the algorithm (is it 20\% done or
+80\% done ?).
+
+\cgal provides a standardized mechanism to track the progress of an
+algorithm using external classes. The class of the algorithm (denoted
+as the `Observed` class) must fulfill the following requirements:
+
+- Notify the tracker by calling the method `notify()` of the tracker
+whenever its status has changed.
+
+- Provide a method `progress()` that returns the fraction of the
+algorithm done. As this method is not guaranteed to be fast, it is the
+responsibility of the tracker to make sure it is not called too often.
+
+To be compatible with the \cgal algorithm, a tracker must inherit
+`CGAL::Abstract_progress_tracker`. We provide an implementation
+displaying progress on the standard error output:
+`CGAL::Ascii_progress_tracker`.
+
 
 \section MiscellanyMemory Memory Size
 
