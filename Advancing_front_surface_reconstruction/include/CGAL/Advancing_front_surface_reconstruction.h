@@ -699,7 +699,7 @@ namespace CGAL {
     /// @}
 
 
-    /*
+
       ~Advancing_front_surface_reconstruction()
       {
 
@@ -709,7 +709,7 @@ namespace CGAL {
       std::cerr << "init          " << postprocess_timer.time() << std::endl;
       std::cerr << "#outliers     " << number_of_outliers() << std::endl;
       }
-    */
+
 
     typedef Advancing_front_surface_reconstruction_boundary_iterator<Extract> Boundary_iterator;
 
@@ -778,16 +778,20 @@ namespace CGAL {
                 {
                   while(postprocessing()){
                     extend2_timer.start();
-                    extend();
+                    extend(tracker);
 
                     extend2_timer.stop();
                   }
                 }
             }
+
         }while(re_init &&
                ((_number_of_connected_components < max_connected_component)||
                 (max_connected_component < 0)));
-
+      
+      notify_tracker (tracker);
+      std::cerr << std::endl << _facets_done << " on " << T.number_of_facets () << std::endl;
+        
       _tds_2_inf = AFSR::construct_surface(_tds_2, *this);
 
       boundaries();
@@ -1510,6 +1514,7 @@ namespace CGAL {
                   }
           }
       }
+      _facets_done ++;
 
       if (min_value != HUGE_VAL)
         {
@@ -1688,6 +1693,8 @@ namespace CGAL {
     validate(const Edge_incident_facet& edge_Efacet,
              const criteria& value)
     {
+      validate_progress (edge_Efacet - 1);
+      
       int i = (6 - edge_Efacet.second
                - edge_Efacet.first.second
                - edge_Efacet.first.third);
@@ -1728,7 +1735,7 @@ namespace CGAL {
                   dec_mark(c->vertex(i));
 
                   select_facet(c, edge_Efacet.second);
-                  validate_progress (edge_Efacet);
+
       
                   return FINAL_CASE;
                 }
@@ -1743,7 +1750,6 @@ namespace CGAL {
                             ordered_key, v1, v2, edge_Ifacet_2);
 
                   select_facet(c, edge_Efacet.second);
-                  validate_progress (edge_Efacet);
                   
                   return EAR_CASE;
                 }
@@ -1756,7 +1762,6 @@ namespace CGAL {
                   merge_ear(ordered_el2, result2,
                             ordered_key, v2, v1, edge_Ifacet_1);
                   select_facet(c, edge_Efacet.second);
-                  validate_progress (edge_Efacet);
                   
                   return EAR_CASE;
                 }
@@ -1798,7 +1803,6 @@ namespace CGAL {
                       _ordered_border.insert(Radius_ptr_type(e2.first, p2));
 
                       select_facet(c, edge_Efacet.second);
-                      validate_progress (edge_Efacet);
                       
                       return EXTERIOR_CASE;
                     }
@@ -1947,7 +1951,6 @@ namespace CGAL {
 			  }
 		      }
 		    select_facet(c, edge_Efacet.second);
-                    validate_progress (edge_Efacet);
 		    return CONNECTING_CASE;
 		  }
                 }
@@ -2039,6 +2042,7 @@ namespace CGAL {
                   if ((validate_result == NOT_VALID)||
                       (validate_result == NOT_VALID_CONNECTING_CASE))
                     {
+                      
                       Radius_edge_type new_candidate;
                       Border_elt result;
                       Edge_like key_tmp(v1,v2);
@@ -2453,9 +2457,23 @@ namespace CGAL {
     }
     double progress () const
     {
+      static bool first = true;
+
+      if (first && _facets_done / (double)(T.number_of_facets ()) > 0.84)
+        {
+      std::cerr << "postprocessing" << postprocess_timer.time() << std::endl;
+      std::cerr << "extend        " << extend_timer.time() << std::endl;
+      std::cerr << "extend2       " << extend2_timer.time() << std::endl;
+      std::cerr << "init          " << postprocess_timer.time() << std::endl;
+      std::cerr << "#outliers     " << number_of_outliers() << std::endl;
+      first = false;
+        }
+      
+      
       return _facets_done / (double)(T.number_of_facets ());
     }
-    void validate_progress (const Edge_incident_facet& edge_Efacet)
+    void validate_progress (const Edge_incident_facet& edge_Efacet,
+                            int offset = 0)
     {
       Facet_circulator start = T.incident_facets (edge_Efacet.first),
         circ = start;
@@ -2465,8 +2483,9 @@ namespace CGAL {
           ++ circ;
         }
       while (circ != start);
+      _facets_done += offset;
     }
-                           
+    
       
     
 
@@ -2609,9 +2628,12 @@ namespace CGAL {
     Reconstruction R(dt, filter);
     //    CGAL::Ascii_bar_progress_tracker<Reconstruction> tracker;
     //    CGAL::Simple_remaining_time_progress_tracker<Reconstruction> tracker;
-    CGAL::Ascii_bar_with_remaining_time_progress_tracker<Reconstruction> tracker;
+    CGAL::Ascii_progress_tracker<Reconstruction, true, true> tracker;
 
     R.run(radius_ratio_bound, beta, &tracker);
+
+    std::cerr << std::endl << "Done" << std::endl;
+    
     write_triple_indices(out, R);
     return out;
   }
