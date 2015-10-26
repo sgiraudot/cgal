@@ -20,8 +20,8 @@ class Ascii_progress_tracker : public Abstract_progress_tracker<Observed>
 {
 private:
 
-  time_t m_refresh_iter;
-  time_t m_current_iter;
+  unsigned int m_refresh_iter;
+  unsigned int m_current_iter;
 
   time_t m_refresh_time;
   time_t m_latest;
