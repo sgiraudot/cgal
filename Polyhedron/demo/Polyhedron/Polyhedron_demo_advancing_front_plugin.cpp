@@ -6,6 +6,7 @@
 #include "Kernel_type.h"
 #include "Polyhedron_type.h"
 #include <CGAL/Advancing_front_surface_reconstruction.h>
+#include <CGAL/Progress_tracker.h>
 
 #include <QObject>
 #include <QAction>
@@ -13,8 +14,75 @@
 #include <QApplication>
 #include <QtPlugin>
 #include <QInputDialog>
+#include <QProgressDialog>
 
 #include "ui_Polyhedron_demo_advancing_front_plugin.h"
+
+
+template <typename Observed>
+class Qt_progress_tracker :
+  public CGAL::Abstract_progress_tracker<Observed>,
+  public QProgressDialog
+{
+private:
+  unsigned int m_refresh_iter;
+  unsigned int m_current_iter;
+  time_t m_refresh_time;
+  time_t m_latest;
+
+public:
+
+  Qt_progress_tracker (QWidget* parent = 0,
+                       Qt::WindowFlags f = 0,
+                       unsigned int refresh_iter = 1000,
+                       time_t refresh_time = 1)
+    : QProgressDialog (parent, f),
+      m_refresh_iter (refresh_iter),
+      m_refresh_time (refresh_time)
+  {
+    m_current_iter = 0;
+    m_latest = time (NULL);
+
+
+    this->setOrientation (Qt::Vertical);
+    this->setMinimum(0);
+    this->setMaximum(100);
+    this->setCancelButton (0);
+
+    this->setMinimumDuration (0);
+
+    this->setValue(0);
+
+    std::cerr << "Created" << std::endl;
+    
+
+  }
+  virtual ~Qt_progress_tracker () { }
+
+  virtual void notify (const Observed* obs)
+  {
+    if (m_current_iter ++ < m_refresh_iter)
+      return;
+    m_current_iter = 0;
+
+    time_t current = time (NULL);
+    if (current < m_latest + m_refresh_time)
+      return;
+
+    double done = obs->progress ();
+
+    this->setValue ((unsigned int)(100. * done));
+    QApplication::processEvents();
+    std::cerr << done << std::endl;
+    
+    m_latest = time (NULL);
+  }
+  
+
+
+};
+
+
 
 struct Perimeter {
 
@@ -87,6 +155,15 @@ class Polyhedron_demo_advancing_front_plugin_dialog : public QDialog, private Ui
 
 void Polyhedron_demo_advancing_front_plugin::on_actionAdvancingFrontReconstruction_triggered()
 {
+  typedef CGAL::Advancing_front_surface_reconstruction_vertex_base_3<Kernel> LVb;
+  typedef CGAL::Advancing_front_surface_reconstruction_cell_base_3<Kernel> LCb;
+
+  typedef CGAL::Triangulation_data_structure_3<LVb,LCb> Tds;
+  typedef CGAL::Delaunay_triangulation_3<Kernel,Tds> Triangulation_3;
+
+  typedef CGAL::Advancing_front_surface_reconstruction<Triangulation_3, Perimeter> Reconstruction;
+
+  
   const Scene_interface::Item_id index = scene->mainSelectionIndex();
 
   Scene_points_with_normal_item* point_set_item =
@@ -113,13 +190,25 @@ void Polyhedron_demo_advancing_front_plugin::on_actionAdvancingFrontReconstructi
     Scene_polyhedron_item* new_item = new Scene_polyhedron_item(Polyhedron());
     Polyhedron& P = * const_cast<Polyhedron*>(new_item->polyhedron());
     Perimeter filter(sm_perimeter);
-      CGAL::advancing_front_surface_reconstruction((points)->begin(), points->end(), P, filter);
 
+    Triangulation_3 dt (points->begin(), points->end());
+
+    Reconstruction reconstruction (dt, filter);
+
+    Qt_progress_tracker<Reconstruction>* tracker = new Qt_progress_tracker<Reconstruction> ();
+    
+    tracker->show ();
+    
+    reconstruction.run (5., 0.52, tracker);
+
+    delete tracker;
+    
+    CGAL::AFSR::construct_polyhedron (P, reconstruction);
 
     new_item->setName(tr("%1 Advancing Front (%2)")
                       .arg(point_set_item->name())
                       .arg(sm_perimeter));
-    new_item->setColor(Qt::lightGray);
+    new_item->setColor(Qt::red);
     scene->addItem(new_item);
     
     // Hide point set
