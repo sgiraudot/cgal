@@ -14,16 +14,18 @@
 #include <QApplication>
 #include <QtPlugin>
 #include <QInputDialog>
-#include <QProgressDialog>
+#include <QProgressBar>
 
 #include "ui_Polyhedron_demo_advancing_front_plugin.h"
+#include "ui_Progress_tracker_dialog.h"
 
 
 template <typename Observed>
 class Qt_progress_tracker :
-  public CGAL::Abstract_progress_tracker<Observed>,
-  public QProgressDialog
+  public QDialog, private Ui::ProgressTrackerDialog,
+  public CGAL::Abstract_progress_tracker<Observed>
 {
+  
 private:
   unsigned int m_refresh_iter;
   unsigned int m_current_iter;
@@ -32,30 +34,20 @@ private:
 
 public:
 
-  Qt_progress_tracker (QWidget* parent = 0,
-                       Qt::WindowFlags f = 0,
-                       unsigned int refresh_iter = 1000,
+  Qt_progress_tracker (unsigned int refresh_iter = 1000,
                        time_t refresh_time = 1)
-    : QProgressDialog (parent, f),
+    :
       m_refresh_iter (refresh_iter),
       m_refresh_time (refresh_time)
   {
+    setupUi (this);
+
     m_current_iter = 0;
     m_latest = time (NULL);
 
-
-    this->setOrientation (Qt::Vertical);
-    this->setMinimum(0);
-    this->setMaximum(100);
-    this->setCancelButton (0);
-
-    this->setMinimumDuration (0);
-
-    this->setValue(0);
-
-    std::cerr << "Created" << std::endl;
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    this->show ();
     
-
   }
   virtual ~Qt_progress_tracker () { }
 
@@ -71,8 +63,9 @@ public:
 
     double done = obs->progress ();
 
-    this->setValue ((unsigned int)(100. * done));
-    QApplication::processEvents();
+    m_bar->setValue ((unsigned int)(100. * done));
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     std::cerr << done << std::endl;
     
     m_latest = time (NULL);
@@ -163,7 +156,7 @@ void Polyhedron_demo_advancing_front_plugin::on_actionAdvancingFrontReconstructi
 
   typedef CGAL::Advancing_front_surface_reconstruction<Triangulation_3, Perimeter> Reconstruction;
 
-  
+
   const Scene_interface::Item_id index = scene->mainSelectionIndex();
 
   Scene_points_with_normal_item* point_set_item =
@@ -191,12 +184,13 @@ void Polyhedron_demo_advancing_front_plugin::on_actionAdvancingFrontReconstructi
     Polyhedron& P = * const_cast<Polyhedron*>(new_item->polyhedron());
     Perimeter filter(sm_perimeter);
 
+
+    
     Triangulation_3 dt (points->begin(), points->end());
 
     Reconstruction reconstruction (dt, filter);
-
-    Qt_progress_tracker<Reconstruction>* tracker = new Qt_progress_tracker<Reconstruction> ();
     
+    Qt_progress_tracker<Reconstruction>* tracker = new Qt_progress_tracker<Reconstruction> ();  
     tracker->show ();
     
     reconstruction.run (5., 0.52, tracker);
