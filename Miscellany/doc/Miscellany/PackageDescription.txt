@@ -21,6 +21,7 @@
 
 ## Concepts ##
 - `UniqueHashFunction`
+- `ProgressTracker`
 
 ## Classes ##
 - `CGAL::Timer`
@@ -35,8 +36,8 @@
 
 - `CGAL::Modifier_base<R>`
 
-- `CGAL::Abstract_progress_tracker<Observed>`
 - `CGAL::Ascii_progress_tracker<Observed,ProgressBar,EstimateRemainingTime>`
+- `CGAL::Dummy_progress_tracker<Observed>`
 
 */
 

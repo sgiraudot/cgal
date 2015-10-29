@@ -1,51 +1,19 @@
 
 namespace CGAL {
 
-/*!
-\ingroup PkgProfilingTools
-
-The class `Abstract_progress_tracker` is an abstract class for keeping
-track of the progresses of algorithm. 
-
-\tparam Observed The observed algorithm class. This class must provide
-a method `progress()`.
-
-*/
-
-
-template <typename Observed>
-class Abstract_progress_tracker
-{
-public:
-
-/// \name Abstract callback
-/// @{
-
-/*!
-  This method is called by the `Observed` object when its progress has
-  changed.
-
-  \warning The `Observed` object calls this method whenever its
-  progress has changed. It is the responsability of the
-  `Progress_tracker` to make sure it does not call the method
-  `progress()` too often (which can badly impact the performances if
-  `progress()` requires heavy computation).
-*/
-  virtual void notify (const Observed* obs) = 0;
-
-/// @} 
-};
-
 
 /*!
 \ingroup PkgProfilingTools
 
-The class `Ascii_progress_tracker` is an implementation of
-`Abstract_progress_tracker` which displays the percentage of progress
-of the observed algorithm on the standard error output.
+The class `Ascii_progress_tracker` is a model for the
+`ProgressTracker` concept. It displays the percentage of progress of
+the observed algorithm on the standard error output. It can also
+estimate the remaining time of the algorithm by assuming a constant
+time dependency on the progress percentage.
 
-\tparam Observed The observed algorithm class. This class must provide
-a method `progress()`.
+\cgalModels `ProgressTracker`
+
+\tparam Observed The observed algorithm class. 
 
 \tparam ProgressBar If `true`, the tracker displays an ASCII progress
 bar in addition of the percentage of progress.
@@ -59,7 +27,7 @@ expected to finish.
 template < typename Observed,
            bool ProgressBar = false,
            bool EstimateRemainingTime = false >
-class Ascii_progress_tracker : public Abstract_progress_tracker<Observed>
+class Ascii_progress_tracker
 {
 public:
 
@@ -91,22 +59,26 @@ public:
 
 /// @}
 
-/// \name Callback
-/// @{
-  
-  /*!
-  This method is called by the `Observed` object when its progress has
-  changed.
+};
 
-  \warning The `Observed` object calls this method whenever its
-  progress has changed. It is the responsability of the
-  `Progress_tracker` to make sure it does not call the method
-  `progress()` too often (which can badly impact the performances if
-  `progress()` requires heavy computation).
+/*!
+\ingroup PkgProfilingTools
+
+The class `Dummy_progress_tracker` is a model for the
+`ProgressTracker` concept. It doesn't do anything and is the default
+model when tracking progress is not needed.
+
+\cgalModels `ProgressTracker`
+
+\tparam Observed The observed algorithm class. 
+
+
 */
-  virtual void notify (const Observed* obs);
 
- /// @}
+template < typename Observed>
+class Dummy_progress_tracker
+{
+public:
 };
 
   
