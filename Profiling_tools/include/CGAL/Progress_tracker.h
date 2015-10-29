@@ -4,19 +4,25 @@
 
 namespace CGAL {
 
-
 template <typename Observed>
-class Abstract_progress_tracker
+class Dummy_progress_tracker
 {
 public:
-  virtual void notify (const Observed* obs) = 0;
+  void notify (const Observed* obs)
+  {
+
+  }
+  void notify (double progress)
+  {
+
+  }
 };
 
 
 template < typename Observed,
            bool ProgressBar = false,
            bool EstimateRemainingTime = false >
-class Ascii_progress_tracker : public Abstract_progress_tracker<Observed>
+class Ascii_progress_tracker
 {
 private:
 
@@ -46,7 +52,7 @@ public:
   virtual ~Ascii_progress_tracker () { }
 
   
-  virtual void notify (const Observed* obs)
+  void notify (const Observed* obs)
   {
     if (m_current_iter ++ < m_refresh_iter)
       return;
@@ -67,6 +73,29 @@ public:
 
     if (EstimateRemainingTime)
       display_remaining_time (done, current);
+
+    m_latest = time (NULL);
+  }
+
+  void notify (double progress)
+  {
+    if (m_current_iter ++ < m_refresh_iter)
+      return;
+    m_current_iter = 0;
+
+    time_t current = time (NULL);
+    if (current < m_latest + m_refresh_time)
+      return;
+
+    std::cerr << "\r";
+    
+    if (ProgressBar)
+      display_progress_bar (progress);
+
+    std::cerr << (unsigned int)(100. * progress) << "%";
+
+    if (EstimateRemainingTime)
+      display_remaining_time (progress, current);
 
     m_latest = time (NULL);
   }

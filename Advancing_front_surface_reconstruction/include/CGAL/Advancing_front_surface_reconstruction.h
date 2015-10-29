@@ -315,8 +315,6 @@ namespace CGAL {
     typedef typename Triangulation_3::Vertex::Incidence_request_elt Incidence_request_elt;
  
 
-    typedef CGAL::Abstract_progress_tracker<Extract> Progress_tracker;
-    
     typedef std::pair< Vertex_handle, Vertex_handle > Edge_like;
     typedef CGAL::Triple< Vertex_handle, Vertex_handle, Vertex_handle > Facet_like;
 
@@ -749,8 +747,15 @@ namespace CGAL {
 
     */
 
-    void run(double radius_ratio_bound=5, double beta= 0.52,
-             Progress_tracker* tracker = NULL)
+    void run(double radius_ratio_bound=5, double beta= 0.52)
+    {
+      CGAL::Dummy_progress_tracker<Extract> tracker;
+      run (radius_ratio_bound, beta, tracker);
+    }
+
+    template <typename ProgressTracker>
+    void run(double radius_ratio_bound, double beta,
+             ProgressTracker& tracker)
     {
       _facets_done = 0;
       
@@ -789,7 +794,7 @@ namespace CGAL {
                ((_number_of_connected_components < max_connected_component)||
                 (max_connected_component < 0)));
       
-      notify_tracker (tracker);
+      tracker.notify (this);
       std::cerr << std::endl << _facets_done << " on " << T.number_of_facets () << std::endl;
         
       _tds_2_inf = AFSR::construct_surface(_tds_2, *this);
@@ -1693,7 +1698,7 @@ namespace CGAL {
     validate(const Edge_incident_facet& edge_Efacet,
              const criteria& value)
     {
-      validate_progress (edge_Efacet - 1);
+      validate_progress (edge_Efacet, - 1);
       
       int i = (6 - edge_Efacet.second
                - edge_Efacet.first.second
@@ -1999,8 +2004,8 @@ namespace CGAL {
     }
 
     //---------------------------------------------------------------------
-    void
-    extend(Progress_tracker* tracker = NULL)
+    template <typename ProgressTracker>
+    void extend(ProgressTracker& tracker)
     {
       // initilisation de la variable globale K: qualite d'echantillonnage requise
       K = K_init; // valeur d'initialisation de K pour commencer prudemment...
@@ -2066,7 +2071,7 @@ namespace CGAL {
                         }
                     }
                 }
-              notify_tracker (tracker);
+              tracker.notify (this);
             }
           while((!_ordered_border.empty())&&
                 (_ordered_border.begin()->first < STANDBY_CANDIDATE_BIS));
@@ -2449,12 +2454,6 @@ namespace CGAL {
       return true;
     }
 
-
-    void notify_tracker (Progress_tracker* tracker) const
-    {
-      if (tracker != NULL)
-        tracker->notify (this);
-    }
     double progress () const
     {
       static bool first = true;
@@ -2628,9 +2627,9 @@ namespace CGAL {
     Reconstruction R(dt, filter);
     //    CGAL::Ascii_bar_progress_tracker<Reconstruction> tracker;
     //    CGAL::Simple_remaining_time_progress_tracker<Reconstruction> tracker;
-    CGAL::Ascii_progress_tracker<Reconstruction, true, true> tracker;
+    //    CGAL::Ascii_progress_tracker<Reconstruction, true, true> tracker;
 
-    R.run(radius_ratio_bound, beta, &tracker);
+    R.run(radius_ratio_bound, beta);
 
     std::cerr << std::endl << "Done" << std::endl;
     
