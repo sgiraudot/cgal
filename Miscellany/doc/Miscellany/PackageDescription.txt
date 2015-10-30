@@ -36,8 +36,9 @@
 
 - `CGAL::Modifier_base<R>`
 
-- `CGAL::Ascii_progress_tracker<Observed,ProgressBar,EstimateRemainingTime>`
-- `CGAL::Dummy_progress_tracker<Observed>`
+- `CGAL::Dummy_progress_tracker`
+- `CGAL::Ascii_progress_tracker<ProgressBar,EstimateRemainingTime>`
+
 
 */
 
