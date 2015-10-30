@@ -20,6 +20,7 @@
 #include "ui_Progress_tracker_dialog.h"
 
 
+
 template <typename Observed>
 class Qt_progress_tracker :
   public QDialog, private Ui::ProgressTrackerDialog,
@@ -45,8 +46,11 @@ public:
     m_current_iter = 0;
     m_latest = time (NULL);
 
-    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-    this->show ();
+    m_bar->setValue (0);
+    m_text->setText ("0% done");
+
+    //    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     
   }
   virtual ~Qt_progress_tracker () { }
@@ -65,7 +69,8 @@ public:
 
     m_bar->setValue ((unsigned int)(100. * done));
     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-
+    this->show ();
+    
     std::cerr << done << std::endl;
     
     m_latest = time (NULL);
@@ -184,15 +189,18 @@ void Polyhedron_demo_advancing_front_plugin::on_actionAdvancingFrontReconstructi
     Polyhedron& P = * const_cast<Polyhedron*>(new_item->polyhedron());
     Perimeter filter(sm_perimeter);
 
-
-    
     Triangulation_3 dt (points->begin(), points->end());
 
     Reconstruction reconstruction (dt, filter);
+
     
-    Qt_progress_tracker<Reconstruction>* tracker = new Qt_progress_tracker<Reconstruction> ();  
+    Qt_progress_tracker<Reconstruction>* tracker = new Qt_progress_tracker<Reconstruction> ();
+
+    
+    qApp->processEvents();
     tracker->show ();
-    
+
+     
     reconstruction.run (5., 0.52, tracker);
 
     delete tracker;

@@ -4,23 +4,23 @@
 
 namespace CGAL {
 
-template <typename Observed>
 class Dummy_progress_tracker
 {
 public:
-  void notify (const Observed* obs)
+
+  template <typename Observed>
+  void notify (const Observed*)
   {
 
   }
-  void notify (double progress)
+  void notify (double)
   {
 
   }
 };
 
 
-template < typename Observed,
-           bool ProgressBar = false,
+template < bool ProgressBar = false,
            bool EstimateRemainingTime = false >
 class Ascii_progress_tracker
 {
@@ -51,7 +51,7 @@ public:
   }
   virtual ~Ascii_progress_tracker () { }
 
-  
+  template <typename Observed>
   void notify (const Observed* obs)
   {
     if (m_current_iter ++ < m_refresh_iter)
