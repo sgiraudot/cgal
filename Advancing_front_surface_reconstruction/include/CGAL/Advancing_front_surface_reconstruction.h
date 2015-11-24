@@ -794,7 +794,7 @@ namespace CGAL {
                ((_number_of_connected_components < max_connected_component)||
                 (max_connected_component < 0)));
       
-      tracker.notify (this);
+      tracker.notify (*this);
       std::cerr << std::endl << _facets_done << " on " << T.number_of_facets () << std::endl;
         
       _tds_2_inf = AFSR::construct_surface(_tds_2, *this);
@@ -2071,7 +2071,7 @@ namespace CGAL {
                         }
                     }
                 }
-              tracker.notify (this);
+              tracker.notify (*this);
             }
           while((!_ordered_border.empty())&&
                 (_ordered_border.begin()->first < STANDBY_CANDIDATE_BIS));

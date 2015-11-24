@@ -6,7 +6,6 @@
 `ProgressTracker` is a concept for keeping track of the progress of an
 algorithm.
 
-
 \cgalHasModel `CGAL::Dummy_progress_tracker`
 \cgalHasModel `CGAL::Ascii_progress_tracker<ProgressBar,EstimateRemainingTime>`
 
@@ -26,22 +25,13 @@ public:
 
   \tparam Observed The observed algorithm class.
 
-  \warning The `Observed` object calls this method whenever its
-  progress has changed. It is the responsability of the
-  `Progress_tracker` to make sure it does not call the method
-  `progress()` too often (which can badly impact the performances if
-  `progress()` requires heavy computation).
+  \note The model of `ProgressTracker` used is responsible for
+  checking the progress of the `Observed` object using methods
+  provided by this object. This methods are specific to the `Observed`
+  class.
 */
   template <typename Observed>
-  void notify (const Observed* obs);
-
-/*!
-
-  This variant directly uses the progress value sent by the observed
-  object.
-
-*/
-  void notify (double progress);
+  void notify (const Observed& obs);
 
 /// @} 
 };

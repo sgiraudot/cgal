@@ -9,14 +9,11 @@ class Dummy_progress_tracker
 public:
 
   template <typename Observed>
-  void notify (const Observed*)
+  void notify (const Observed&)
   {
 
   }
-  void notify (double)
-  {
 
-  }
 };
 
 
@@ -52,7 +49,7 @@ public:
   virtual ~Ascii_progress_tracker () { }
 
   template <typename Observed>
-  void notify (const Observed* obs)
+  void notify (const Observed& obs)
   {
     if (m_current_iter ++ < m_refresh_iter)
       return;
@@ -62,7 +59,7 @@ public:
     if (current < m_latest + m_refresh_time)
       return;
 
-    double done = obs->progress ();
+    double done = obs.progress ();
 
     std::cerr << "\r";
     
@@ -77,28 +74,6 @@ public:
     m_latest = time (NULL);
   }
 
-  void notify (double progress)
-  {
-    if (m_current_iter ++ < m_refresh_iter)
-      return;
-    m_current_iter = 0;
-
-    time_t current = time (NULL);
-    if (current < m_latest + m_refresh_time)
-      return;
-
-    std::cerr << "\r";
-    
-    if (ProgressBar)
-      display_progress_bar (progress);
-
-    std::cerr << (unsigned int)(100. * progress) << "%";
-
-    if (EstimateRemainingTime)
-      display_remaining_time (progress, current);
-
-    m_latest = time (NULL);
-  }
 
 protected:
 
