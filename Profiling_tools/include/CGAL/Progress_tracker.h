@@ -17,6 +17,16 @@ public:
 };
 
 
+class Simple_progress_value
+{
+private:
+  double m_value;
+public:
+  Simple_progress_value (double value) : m_value (value) { }
+  double progress() const { return m_value; }
+};
+  
+
 template < bool ProgressBar = false,
            bool EstimateRemainingTime = false >
 class Ascii_progress_tracker

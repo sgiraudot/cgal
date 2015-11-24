@@ -558,7 +558,9 @@ wlop_simplify_and_regularize_point_set(
   }
 
 
-  Ascii_progress_tracker<true, true> tracker;
+  Ascii_progress_tracker<true, true> tracker (0, 1);
+  std::size_t total = std::distance (sample_points.begin (),
+                                     sample_points.end ());
 
   for (unsigned int iter_n = 0; iter_n < iter_number; ++iter_n)
   {
@@ -606,13 +608,13 @@ wlop_simplify_and_regularize_point_set(
                            sample_density_weights);
 
        tbb::parallel_for(block, sample_updater);
+
+       tracker.notify (CGAL::Simple_progress_value ((iter_n + 1) / (double)iter_number));
     }else
 #endif
     {
       
       //sequential
-      std::size_t total = std::distance (sample_points.begin (),
-                                         sample_points.end ());
       std::size_t i = 0;
       for (sample_iter = sample_points.begin();
            sample_iter != sample_points.end(); ++sample_iter, ++update_iter, ++ i)
@@ -627,7 +629,7 @@ wlop_simplify_and_regularize_point_set(
                                        radius2,
                                        original_density_weights,
                                        sample_density_weights);
-        tracker.notify ((iter_n*total + i+1) / (double)(iter_number * total));
+        tracker.notify (CGAL::Simple_progress_value ((iter_n*total + i+1) / (double)(iter_number * total)));
       }
     }
     
