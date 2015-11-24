@@ -6,14 +6,13 @@
 `ProgressTracker` is a concept for keeping track of the progress of an
 algorithm.
 
-\cgalHasModel `CGAL::Dummy_progress_tracker`
 
+\cgalHasModel `CGAL::Dummy_progress_tracker`
 \cgalHasModel `CGAL::Ascii_progress_tracker<ProgressBar,EstimateRemainingTime>`
 
 */
 
 
-template <typename Observed>
 class ProgressTracker
 {
 public:

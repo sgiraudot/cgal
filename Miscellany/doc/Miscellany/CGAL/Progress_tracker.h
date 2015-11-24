@@ -20,6 +20,8 @@ bar in addition of the percentage of progress.
 estimation of the time remaining before the observed algorithm is
 expected to finish.
 
+\sa `Dummy_progress_tracker`
+
 */
 
 template < bool ProgressBar = false,
@@ -66,6 +68,8 @@ The class `Dummy_progress_tracker` is a model for the
 model when tracking progress is not needed.
 
 \cgalModels `ProgressTracker`
+
+\sa `Ascii_progress_tracker<ProgressBar,EstimateRemainingTime>`
 
 */
 
