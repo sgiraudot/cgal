@@ -425,7 +425,8 @@ template <typename Concurrency_tag,
           typename OutputIterator,
           typename RandomAccessIterator,
           typename PointPMap,
-          typename Kernel>
+          typename Kernel,
+          typename ProgressTracker >
 OutputIterator
 wlop_simplify_and_regularize_point_set(
   RandomAccessIterator first,  ///< random-access iterator to the first input point.
@@ -446,7 +447,8 @@ wlop_simplify_and_regularize_point_set(
                                ///< More iterations give a more regular result but increase the runtime.
   bool require_uniform_sampling,///< an optional preprocessing, which will give better result
                                ///< if the distribution of the input points is highly non-uniform. 
-                               ///< The default value is `false`. 
+                               ///< The default value is `false`.
+  ProgressTracker& tracker,    ///< class to track progress of the algorithm
   const Kernel&                ///< geometric traits.
 )
 {
@@ -558,7 +560,6 @@ wlop_simplify_and_regularize_point_set(
   }
 
 
-  Ascii_progress_tracker<true, true> tracker (0, 1);
   std::size_t total = std::distance (sample_points.begin (),
                                      sample_points.end ());
 
@@ -656,7 +657,7 @@ wlop_simplify_and_regularize_point_set(
 // This variant deduces the kernel from the iterator type.
 template <typename Concurrency_tag,
           typename OutputIterator,     
-          typename RandomAccessIterator, 
+          typename RandomAccessIterator,
           typename PointPMap>
 OutputIterator 
 wlop_simplify_and_regularize_point_set(
@@ -668,12 +669,13 @@ wlop_simplify_and_regularize_point_set(
   double neighbor_radius,       ///< size of neighbors.
   const unsigned int max_iter_number, ///< number of iterations.
   const bool require_uniform_sampling     ///< if needed to compute density 
-                                      ///  to generate more rugularized result.                                 
+                                      ///  to generate more rugularized result.
 ) 
 {
   typedef typename boost::property_traits<PointPMap>::value_type  Point;
   typedef typename Kernel_traits<Point>::Kernel                   Kernel;
-  
+
+  CGAL::Dummy_progress_tracker tracker;
   return wlop_simplify_and_regularize_point_set<Concurrency_tag>(
       first, beyond,
       output,
@@ -682,6 +684,7 @@ wlop_simplify_and_regularize_point_set(
       neighbor_radius,
       max_iter_number,
       require_uniform_sampling,
+      tracker,
       Kernel());
 }
 /// @endcond
