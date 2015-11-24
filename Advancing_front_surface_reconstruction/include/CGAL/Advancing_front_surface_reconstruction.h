@@ -749,7 +749,7 @@ namespace CGAL {
 
     void run(double radius_ratio_bound=5, double beta= 0.52)
     {
-      CGAL::Dummy_progress_tracker<Extract> tracker;
+      CGAL::Dummy_progress_tracker tracker;
       run (radius_ratio_bound, beta, tracker);
     }
 
@@ -2627,9 +2627,9 @@ namespace CGAL {
     Reconstruction R(dt, filter);
     //    CGAL::Ascii_bar_progress_tracker<Reconstruction> tracker;
     //    CGAL::Simple_remaining_time_progress_tracker<Reconstruction> tracker;
-    //    CGAL::Ascii_progress_tracker<Reconstruction, true, true> tracker;
+    CGAL::Ascii_progress_tracker<true, true> tracker;
 
-    R.run(radius_ratio_bound, beta);
+    R.run(radius_ratio_bound, beta, tracker);
 
     std::cerr << std::endl << "Done" << std::endl;
     
