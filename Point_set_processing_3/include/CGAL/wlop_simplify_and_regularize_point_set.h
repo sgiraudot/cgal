@@ -43,6 +43,8 @@
 #include <CGAL/Search_traits_3.h>
 #include <CGAL/Bbox_3.h>
 
+#include <CGAL/Progress_tracker.h>
+
 namespace CGAL {
 // ----------------------------------------------------------------------------
 // Private section
@@ -555,6 +557,9 @@ wlop_simplify_and_regularize_point_set(
     }
   }
 
+
+  Ascii_progress_tracker<true, true> tracker;
+
   for (unsigned int iter_n = 0; iter_n < iter_number; ++iter_n)
   {
     // Initiate a KD-tree search for sample points
@@ -604,9 +609,13 @@ wlop_simplify_and_regularize_point_set(
     }else
 #endif
     {
+      
       //sequential
+      std::size_t total = std::distance (sample_points.begin (),
+                                         sample_points.end ());
+      std::size_t i = 0;
       for (sample_iter = sample_points.begin();
-        sample_iter != sample_points.end(); ++sample_iter, ++update_iter)
+           sample_iter != sample_points.end(); ++sample_iter, ++update_iter, ++ i)
       {
         *update_iter = simplify_and_regularize_internal::
           compute_update_sample_point<Kernel,
@@ -618,6 +627,7 @@ wlop_simplify_and_regularize_point_set(
                                        radius2,
                                        original_density_weights,
                                        sample_density_weights);
+        tracker.notify ((iter_n*total + i+1) / (double)(iter_number * total));
       }
     }
     

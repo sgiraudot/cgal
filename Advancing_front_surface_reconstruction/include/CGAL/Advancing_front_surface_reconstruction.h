@@ -45,6 +45,8 @@
 #include <CGAL/internal/AFSR/construct_polyhedron.h>
 #include <CGAL/internal/AFSR/write_triple_indices.h>
 
+#include <CGAL/Progress_tracker.h>
+
 namespace CGAL {
 
   // This iterator allows to visit all contours. It has the particularity
@@ -311,6 +313,7 @@ namespace CGAL {
 
     typedef typename Triangulation_3::Vertex::Incidence_request_iterator Incidence_request_iterator;
     typedef typename Triangulation_3::Vertex::Incidence_request_elt Incidence_request_elt;
+ 
 
     typedef std::pair< Vertex_handle, Vertex_handle > Edge_like;
     typedef CGAL::Triple< Vertex_handle, Vertex_handle, Vertex_handle > Facet_like;
@@ -357,6 +360,7 @@ namespace CGAL {
     //pour retenir les facettes selectionnees
     int _vh_number;
     int _facet_number;
+    int _facets_done;
 
     //---------------------------------------------------------------------
     //Pour le post traitement
@@ -378,7 +382,6 @@ namespace CGAL {
     typename std::list<Vertex_handle>::iterator ie_sentinel;
     std::list<Next_border_elt> nbe_pool;
     std::list<Intern_successors_type> ist_pool;
-
 
     Intern_successors_type* new_border()
     {
@@ -599,7 +602,7 @@ namespace CGAL {
 
     void initialize_vertices_and_cells()
     {
-
+      
       Incidence_request_elt ire;
       incidence_requests.clear();
       incidence_requests.push_back(ire);
@@ -694,7 +697,7 @@ namespace CGAL {
     /// @}
 
 
-    /*
+
       ~Advancing_front_surface_reconstruction()
       {
 
@@ -704,7 +707,7 @@ namespace CGAL {
       std::cerr << "init          " << postprocess_timer.time() << std::endl;
       std::cerr << "#outliers     " << number_of_outliers() << std::endl;
       }
-    */
+
 
     typedef Advancing_front_surface_reconstruction_boundary_iterator<Extract> Boundary_iterator;
 
@@ -743,8 +746,19 @@ namespace CGAL {
            Described in Section \ref AFSR_Selection
 
     */
+
     void run(double radius_ratio_bound=5, double beta= 0.52)
     {
+      CGAL::Dummy_progress_tracker tracker;
+      run (radius_ratio_bound, beta, tracker);
+    }
+
+    template <typename ProgressTracker>
+    void run(double radius_ratio_bound, double beta,
+             ProgressTracker& tracker)
+    {
+      _facets_done = 0;
+      
       K = radius_ratio_bound;
       COS_BETA = cos(beta);
       if(T.dimension() < 3){
@@ -760,7 +774,7 @@ namespace CGAL {
             {
               //std::cerr << "Growing connected component " << _number_of_connected_components << std::endl;
               extend_timer.start();
-              extend();
+              extend(tracker);
               extend_timer.stop();
 
               if ((number_of_facets() > static_cast<int>(T.number_of_vertices()))&&
@@ -769,16 +783,20 @@ namespace CGAL {
                 {
                   while(postprocessing()){
                     extend2_timer.start();
-                    extend();
+                    extend(tracker);
 
                     extend2_timer.stop();
                   }
                 }
             }
+
         }while(re_init &&
                ((_number_of_connected_components < max_connected_component)||
                 (max_connected_component < 0)));
-
+      
+      tracker.notify (this);
+      std::cerr << std::endl << _facets_done << " on " << T.number_of_facets () << std::endl;
+        
       _tds_2_inf = AFSR::construct_surface(_tds_2, *this);
 
       boundaries();
@@ -1501,6 +1519,7 @@ namespace CGAL {
                   }
           }
       }
+      _facets_done ++;
 
       if (min_value != HUGE_VAL)
         {
@@ -1679,6 +1698,8 @@ namespace CGAL {
     validate(const Edge_incident_facet& edge_Efacet,
              const criteria& value)
     {
+      validate_progress (edge_Efacet, - 1);
+      
       int i = (6 - edge_Efacet.second
                - edge_Efacet.first.second
                - edge_Efacet.first.third);
@@ -1720,6 +1741,7 @@ namespace CGAL {
 
                   select_facet(c, edge_Efacet.second);
 
+      
                   return FINAL_CASE;
                 }
               //---------------------------------------------------------------------
@@ -1733,7 +1755,7 @@ namespace CGAL {
                             ordered_key, v1, v2, edge_Ifacet_2);
 
                   select_facet(c, edge_Efacet.second);
-
+                  
                   return EAR_CASE;
                 }
               //---------------------------------------------------------------------
@@ -1745,7 +1767,7 @@ namespace CGAL {
                   merge_ear(ordered_el2, result2,
                             ordered_key, v2, v1, edge_Ifacet_1);
                   select_facet(c, edge_Efacet.second);
-
+                  
                   return EAR_CASE;
                 }
 
@@ -1786,7 +1808,7 @@ namespace CGAL {
                       _ordered_border.insert(Radius_ptr_type(e2.first, p2));
 
                       select_facet(c, edge_Efacet.second);
-
+                      
                       return EXTERIOR_CASE;
                     }
                   else // c->vertex(i) is a border point (and now there's only 1
@@ -1982,8 +2004,8 @@ namespace CGAL {
     }
 
     //---------------------------------------------------------------------
-    void
-    extend()
+    template <typename ProgressTracker>
+    void extend(ProgressTracker& tracker)
     {
       // initilisation de la variable globale K: qualite d'echantillonnage requise
       K = K_init; // valeur d'initialisation de K pour commencer prudemment...
@@ -2025,6 +2047,7 @@ namespace CGAL {
                   if ((validate_result == NOT_VALID)||
                       (validate_result == NOT_VALID_CONNECTING_CASE))
                     {
+                      
                       Radius_edge_type new_candidate;
                       Border_elt result;
                       Edge_like key_tmp(v1,v2);
@@ -2048,6 +2071,7 @@ namespace CGAL {
                         }
                     }
                 }
+              tracker.notify (this);
             }
           while((!_ordered_border.empty())&&
                 (_ordered_border.begin()->first < STANDBY_CANDIDATE_BIS));
@@ -2331,6 +2355,8 @@ namespace CGAL {
           { }
         return false;
       }
+
+      
     };
 
 
@@ -2427,6 +2453,41 @@ namespace CGAL {
       postprocess_timer.stop();
       return true;
     }
+
+    double progress () const
+    {
+      static bool first = true;
+
+      if (first && _facets_done / (double)(T.number_of_facets ()) > 0.84)
+        {
+      std::cerr << "postprocessing" << postprocess_timer.time() << std::endl;
+      std::cerr << "extend        " << extend_timer.time() << std::endl;
+      std::cerr << "extend2       " << extend2_timer.time() << std::endl;
+      std::cerr << "init          " << postprocess_timer.time() << std::endl;
+      std::cerr << "#outliers     " << number_of_outliers() << std::endl;
+      first = false;
+        }
+      
+      
+      return _facets_done / (double)(T.number_of_facets ());
+    }
+    void validate_progress (const Edge_incident_facet& edge_Efacet,
+                            int offset = 0)
+    {
+      Facet_circulator start = T.incident_facets (edge_Efacet.first),
+        circ = start;
+      do
+        {
+          ++ _facets_done;
+          ++ circ;
+        }
+      while (circ != start);
+      _facets_done += offset;
+    }
+    
+      
+    
+
 
   }; // class Advancing_front_surface_reconstruction
 
@@ -2562,8 +2623,16 @@ namespace CGAL {
     Triangulation_3 dt( boost::make_transform_iterator(b, AFSR::Auto_count_cc<Point_3,CC>(cc)),
                         boost::make_transform_iterator(e, AFSR::Auto_count_cc<Point_3,CC>(cc) )  );
 
+    
     Reconstruction R(dt, filter);
-    R.run(radius_ratio_bound, beta);
+    //    CGAL::Ascii_bar_progress_tracker<Reconstruction> tracker;
+    //    CGAL::Simple_remaining_time_progress_tracker<Reconstruction> tracker;
+    CGAL::Ascii_progress_tracker<true, true> tracker;
+
+    R.run(radius_ratio_bound, beta, tracker);
+
+    std::cerr << std::endl << "Done" << std::endl;
+    
     write_triple_indices(out, R);
     return out;
   }
