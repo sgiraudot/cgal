@@ -34,6 +34,7 @@
 #include <CGAL/Random.h>
 #include <CGAL/Union_find.h>
 #include <CGAL/Default_diagonalize_traits.h>
+#include <CGAL/Progress_tracker.h>
 
 #include <CGAL/Scale_space_reconstruction_3/Shape_construction_3.h>
 
@@ -650,7 +651,9 @@ public:
      *  \sa `estimate_neighborhood_squared_radius()`.
      *  \sa `reconstruct_surface()`.
      */
-	void increase_scale( unsigned int iterations = 1 );
+    template <typename ProgressTracker>
+    void increase_scale( unsigned int iterations = 1,
+                         ProgressTracker& tracker = CGAL::Dummy_progress_tracker());
 
     /// \cond internal_doc
     /// constructs a scale-space of a collection of points.
@@ -756,7 +759,9 @@ private:
     
     // collects the surface mesh from the shape.
     // If the sahep does not yet exist, it is constructed.
-	void collect_surface (bool separate_shells, bool force_manifold, FT border_angle );
+        template <typename ProgressTracker>
+          void collect_surface (bool separate_shells, bool force_manifold, FT border_angle,
+                                ProgressTracker& tracker);
 
     // detects the non-manifold features of the shape
     void find_two_other_vertices(const Facet& f, Vertex_handle v,
@@ -823,6 +828,10 @@ public:
     }
 
     /// \cond internal_doc
+    template <typename ProgressTracker>
+    void reconstruct_surface( unsigned int iterations, bool separate_shells,
+			      bool force_manifold, FT border_angle,
+                              ProgressTracker& tracker);
     void reconstruct_surface( unsigned int iterations, bool separate_shells = true,
 			      bool force_manifold = false, FT border_angle = 45);
     /// \endcond

@@ -522,9 +522,11 @@ estimate_neighborhood_squared_radius( InputIterator begin, InputIterator end, un
 #endif // DOXYGEN_RUNNING
 
 template < class Gt, class FS, class wA, class Ct >
+template <typename ProgressTracker>
 void
 Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
-increase_scale( unsigned int iterations ) {
+increase_scale( unsigned int iterations,
+                ProgressTracker& tracker) {
     typedef std::vector< unsigned int >		CountVec;
 
     // This method must be called after filling the point collection.
@@ -590,9 +592,11 @@ construct_shape( InputIterator begin, InputIterator end,
 }
 
 template < class Gt, class FS, class wA, class Ct >
+template <typename ProgressTracker>
 void
 Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
-collect_surface (bool separate_shells, bool force_manifold, FT border_angle) {
+collect_surface (bool separate_shells, bool force_manifold, FT border_angle,
+                 ProgressTracker& tracker) {
 
     clear_surface();
     if( !has_shape() )
@@ -1153,18 +1157,31 @@ fix_nonmanifold_vertices() {
 
 
 
-  template < class Gt, class FS, class wA, class Ct >
+template < class Gt, class FS, class wA, class Ct >
+template < typename ProgressTracker >
+void
+Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
+reconstruct_surface( unsigned int iterations, bool separate_shells,
+                     bool force_manifold, FT border_angle,
+                     ProgressTracker& tracker) {
+
+    // Smooth the scale space.
+  increase_scale( iterations, tracker );
+
+    // Mesh the perturbed points.
+  collect_surface (separate_shells, force_manifold, border_angle, tracker);
+
+}
+
+template < class Gt, class FS, class wA, class Ct >
 void
 Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
   reconstruct_surface( unsigned int iterations, bool separate_shells,
 		       bool force_manifold, FT border_angle) {
 
-    // Smooth the scale space.
-    increase_scale( iterations );
-
-    // Mesh the perturbed points.
-    collect_surface (separate_shells, force_manifold, border_angle);
-
+  CGAL::Dummy_progress_tracker tracker;
+  reconstruct_surface (iterations, separate_shells, force_manifold,
+                       border_angle, tracker);
 }
 
 /// \cond internal_doc
