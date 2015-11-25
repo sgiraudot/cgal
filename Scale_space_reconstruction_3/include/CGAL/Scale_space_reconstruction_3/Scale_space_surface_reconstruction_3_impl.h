@@ -522,6 +522,16 @@ estimate_neighborhood_squared_radius( InputIterator begin, InputIterator end, un
 #endif // DOXYGEN_RUNNING
 
 template < class Gt, class FS, class wA, class Ct >
+void
+Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
+increase_scale( unsigned int iterations)
+{
+  CGAL::Dummy_progress_tracker tracker;
+  increase_scale (iterations, tracker);
+}
+
+
+template < class Gt, class FS, class wA, class Ct >
 template <typename ProgressTracker>
 void
 Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
@@ -550,10 +560,16 @@ increase_scale( unsigned int iterations,
         // This can be done concurrently.
         CountVec neighbors( _tree.size(), 0 );
         try_parallel( ComputeNN( _points, _tree, _squared_radius, neighbors ), 0, _tree.size() );
-       
+        
+        _progress = 0.5 * (iter + 0.5) / (double)iterations;
+        tracker.notify (*this);
+        
         // Compute the transformed point locations.
         // This can be done concurrently.
         try_parallel( AdvanceSS( _tree, neighbors, _points ), 0, _tree.size() );
+        
+        _progress = 0.5 * (iter + 1) / (double)iterations;
+        tracker.notify (*this);
 
     }
 
@@ -598,10 +614,16 @@ Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
 collect_surface (bool separate_shells, bool force_manifold, FT border_angle,
                  ProgressTracker& tracker) {
 
+  _progress = 0.5;
+  tracker.notify (*this);
+  
     clear_surface();
     if( !has_shape() )
         construct_shape();
-
+    
+    _progress = (force_manifold ? 0.6 : 0.9);
+    tracker.notify (*this);
+    
     if( !has_neighborhood_squared_radius() )
       estimate_neighborhood_squared_radius();
 
@@ -634,10 +656,20 @@ collect_surface (bool separate_shells, bool force_manifold, FT border_angle,
 	if (force_manifold)
 	  {
 	    // Even when taking into account facets, some nonmanifold features might remain
+            _progress = 0.65;
+            tracker.notify (*this);
+            
 	    fix_nonmanifold_edges();
-	    fix_nonmanifold_vertices();
+            
+            _progress = 0.675;
+            tracker.notify (*this);
+
+	    fix_nonmanifold_vertices(tracker);
 	  }
       }
+
+    _progress = 1.0;
+    tracker.notify (*this);
 }
 
 template < class Gt, class FS, class wA, class Ct >
@@ -994,10 +1026,11 @@ fix_nonmanifold_edges() {
 
 
 
-  template < class Gt, class FS, class wA, class Ct >
+template < class Gt, class FS, class wA, class Ct >
+template <typename ProgressTracker>
 void
 Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
-fix_nonmanifold_vertices() {
+fix_nonmanifold_vertices(ProgressTracker& tracker) {
 
   typedef ::CGAL::Union_find<Facet> UF;
   typedef typename UF::handle UF_handle;
@@ -1020,6 +1053,7 @@ fix_nonmanifold_vertices() {
       _surface.splice(end, tmp, tmp.begin(), tmp.end());
     }
 
+  unsigned int nb_max = 0;
   unsigned int nb_facets_removed = 0;
   unsigned int nb_nm_vertices = 0;
   // Removing facets to fix non-manifold vertices might make some other vertices
@@ -1150,6 +1184,11 @@ fix_nonmanifold_vertices() {
 
 	}
 
+      if (nb_max < nb_nm_vertices)
+        nb_max = nb_nm_vertices;
+
+      _progress = 0.675 + 0.325 * (nb_max - nb_nm_vertices) / (double)(nb_max);
+      tracker.notify (*this);
     }
   while (nb_nm_vertices != 0);
 
@@ -1179,7 +1218,8 @@ Scale_space_surface_reconstruction_3<Gt,FS,wA,Ct>::
   reconstruct_surface( unsigned int iterations, bool separate_shells,
 		       bool force_manifold, FT border_angle) {
 
-  CGAL::Dummy_progress_tracker tracker;
+  //  CGAL::Dummy_progress_tracker tracker;
+  CGAL::Ascii_progress_tracker<true, true> tracker (0, 1);
   reconstruct_surface (iterations, separate_shells, force_manifold,
                        border_angle, tracker);
 }

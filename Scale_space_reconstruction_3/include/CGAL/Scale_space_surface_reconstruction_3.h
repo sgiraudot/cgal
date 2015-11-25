@@ -231,6 +231,8 @@ private:
     typedef std::vector<Point> Pointset;
     Pointset _points;
 
+  double _progress;
+
 public:
 /// \name Constructors
 /// \{
@@ -283,6 +285,7 @@ private:
   void collect_facets_quick( );
 
 
+  
 private:
     //  Get the shape of the scale space.
     /*  If the shape does not exist, it is  constructed first.
@@ -651,9 +654,12 @@ public:
      *  \sa `estimate_neighborhood_squared_radius()`.
      *  \sa `reconstruct_surface()`.
      */
+    void increase_scale( unsigned int iterations = 1);
+    
     template <typename ProgressTracker>
-    void increase_scale( unsigned int iterations = 1,
-                         ProgressTracker& tracker = CGAL::Dummy_progress_tracker());
+      void increase_scale( unsigned int iterations,
+                         ProgressTracker& tracker);
+
 
     /// \cond internal_doc
     /// constructs a scale-space of a collection of points.
@@ -768,7 +774,8 @@ private:
 				 Vertex_handle& v1, Vertex_handle& v2);
     void detect_bubbles( FT border_angle );
     void fix_nonmanifold_edges();
-    void fix_nonmanifold_vertices();
+    template <typename ProgressTracker>
+    void fix_nonmanifold_vertices(ProgressTracker& tracker);
     
 /// \}
 
@@ -834,6 +841,10 @@ public:
                               ProgressTracker& tracker);
     void reconstruct_surface( unsigned int iterations, bool separate_shells = true,
 			      bool force_manifold = false, FT border_angle = 45);
+    double progress () const
+    {
+      return _progress;
+    }
     /// \endcond
 
     /// \cond internal_doc
