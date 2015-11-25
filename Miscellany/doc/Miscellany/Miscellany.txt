@@ -30,24 +30,33 @@ first interval.
 
 Some of the algorithms of the \cgal library require long computations
 for large data sets. For this reason, the user might want to keep
-track of the state of progress of the algorithm (is it 20\% done or
-80\% done ?).
+track of the state of progress of the algorithm: this state can be
+expressed as a remaining number of elements to be treated, a
+percentage of progress or even a simple string that describes the
+current step of the algorithm.
 
 \cgal provides a standardized mechanism to track the progress of an
-algorithm using external classes. The class of the algorithm (denoted
-as the `Observed` class) must fulfill the following requirements:
+algorithm using external classes based on the concept
+`ProgressTracker`. The class of the algorithm (denoted as the
+`Observed` class) must fulfill the following requirements:
 
 - Notify the tracker by calling the method `notify()` of the tracker
 whenever its status has changed.
 
-- Provide a method `progress()` that returns the fraction of the
-algorithm done. As this method is not guaranteed to be fast, it is the
-responsibility of the tracker to make sure it is not called too often.
+- Provide methods to access the progress of the algorithm. The way to
+express the progress may vary widely according to the algorithm and is
+left to the user's discretion.
 
-To be compatible with the \cgal algorithm, a tracker must inherit
-`CGAL::Abstract_progress_tracker`. We provide an implementation
-displaying progress on the standard error output:
-`CGAL::Ascii_progress_tracker`.
+\cgal provides two models for the concept `ProgressTracker`:
+
+- `Dummy_progress_tracker` is the default one and is an empty class to
+be used when progress tracking is not needed.
+
+- `Ascii_progress_tracker` is an example that displays progress on the
+standard output, along with an optional progress bar and an optional
+estimation of remaining time. This particular model requires the
+observed class to provide a method `progress()` that returns the
+fraction of the algorithm done between 0.0 and 1.0.
 
 
 \section MiscellanyMemory Memory Size

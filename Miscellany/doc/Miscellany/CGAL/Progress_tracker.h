@@ -20,6 +20,10 @@ bar in addition of the percentage of progress.
 estimation of the time remaining before the observed algorithm is
 expected to finish.
 
+\warning The observed class must provide a method `progress()` which
+returns a double containing the fraction of progress (between 0.0 and
+1.0).
+
 \sa `Dummy_progress_tracker`
 
 */
