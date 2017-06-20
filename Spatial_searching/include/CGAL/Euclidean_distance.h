@@ -18,6 +18,7 @@
 // 
 //
 // Author(s)     : Hans Tangelder (<hanst@cs.uu.nl>)
+//                 Clement Jamin (clement.jamin.pro@gmail.com)
 
 
 #ifndef CGAL_EUCLIDEAN_DISTANCE_H
