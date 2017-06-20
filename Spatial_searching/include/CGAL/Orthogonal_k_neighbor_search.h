@@ -29,7 +29,7 @@
 #include <CGAL/disable_warnings.h>
 
 #include <CGAL/internal/K_neighbor_search.h>
-#include <CGAL/internal/Distance_helper.h>
+#include <CGAL/internal/Search_helpers.h>
 
 namespace CGAL {
 
