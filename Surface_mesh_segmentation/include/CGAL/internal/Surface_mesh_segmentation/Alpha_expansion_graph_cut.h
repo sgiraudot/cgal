@@ -217,7 +217,7 @@ public:
         graph.clear();
 
         Vertex_descriptor cluster_source = boost::add_vertex(graph);
-        Vertex_descriptor cluster_sink = boost::add_vertex(graph);
+        Vertex_descriptor cluster_sink = boost::add_vertexograph);
 
         #ifdef CGAL_SEGMENTATION_BENCH_GRAPHCUT
         Timer timer;
