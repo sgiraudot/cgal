@@ -61,18 +61,19 @@ namespace internal
   }
 
   template <typename GeomTraits>
-  bool face_with_height_under_tolerance (Surface_mesh_on_cdt<GeomTraits>& mesh,
-                                         typename Surface_mesh_on_cdt<GeomTraits>::Face_handle f,
-                                         double epsilon)
+  bool face_with_height_over_tolerance (Surface_mesh_on_cdt<GeomTraits>& mesh,
+                                        typename Surface_mesh_on_cdt<GeomTraits>::Face_handle f,
+                                        double epsilon)
   {
     for (std::size_t i = 0; i < 3; ++ i)
     {
-      const typename GeomTraits::Point_3& a = mesh.point(f->vertex(i)->info()[0]);
-      const typename GeomTraits::Point_3& b = mesh.point(f->vertex((i+1)%3)->info()[0]);
+      const typename GeomTraits::Point_3& a = mesh.point(f->vertex(i));
+      const typename GeomTraits::Point_3& b = mesh.point(f->vertex((i+1)%3));
       if (std::fabs (a.z() - b.z()) > epsilon)
-        return false;
+        return true;
+
     }
-    return true;
+    return false;
   }
 
   template <typename GeomTraits>
@@ -106,17 +107,78 @@ namespace internal
   }
 
   template <typename GeomTraits>
+  void ignore_faces_close_to_infinite_vertex (Surface_mesh_on_cdt<GeomTraits>& mesh,
+                                              double epsilon)
+  {
+    typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
+    
+    typename SMCDT::Vertex_handle vinf = mesh.infinite_vertex();
+    typename SMCDT::Face_circulator circ = mesh.incident_faces(vinf);
+    typename SMCDT::Face_circulator start = circ;
+    do
+    {
+      mesh.make_ignored (circ);
+        
+      std::size_t indinf = circ->index(vinf);
+      typename GeomTraits::Segment_2 seg (circ->vertex((indinf + 1)%3)->point(),
+                                          circ->vertex((indinf + 2)%3)->point());
+
+      std::queue<typename SMCDT::Edge> todo;
+      todo.push(std::make_pair (circ, indinf));
+      std::set<typename SMCDT::Face_handle> done;
+      while (!(todo.empty()))
+      {
+        typename SMCDT::Edge edge = todo.front();
+        todo.pop();
+
+        typename SMCDT::Face_handle f = edge.first->neighbor(edge.second);
+        if (mesh.is_infinite(f))
+          continue;
+        if (!(done.insert(f).second))
+          continue;
+
+        bool skip = false;
+        for (std::size_t k = 0; k < 3; ++ k)
+          if (CGAL::squared_distance (f->vertex(k)->point(), seg) < epsilon * epsilon)
+          {
+            skip = true;
+            break;
+          }
+
+        if (skip)
+        {
+          typename SMCDT::Vertex_handle next = f->vertex(f->index(edge.first));
+          std::size_t ind = f->index(next);
+          mesh.make_ignored (f);
+          todo.push (std::make_pair (f, (ind+1)%3));
+          todo.push (std::make_pair (f, (ind+2)%3));
+        }
+      }
+            
+      ++ circ;
+    }
+    while (circ != start);
+
+    for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
+         it != mesh.finite_edges_end(); ++ it)
+      if (mesh.is_ignored(it->first) != mesh.is_ignored(it->first->neighbor(it->second)))
+        mesh.insert_constraint (it->first->vertex ((it->second + 1) % 3),
+                                it->first->vertex ((it->second + 2) % 3));
+  }
+
+  
+  template <typename GeomTraits>
   void filter_faces (Surface_mesh_on_cdt<GeomTraits>& mesh,
-                     double spacing, double meshing_factor)
+                     double epsilon)
   {
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
 
-    double epsilon = spacing * meshing_factor;
+    ignore_faces_close_to_infinite_vertex<GeomTraits> (mesh, 3. * epsilon);
 
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end (); ++ it)
-      if (!(face_with_height_under_tolerance<GeomTraits> (mesh, it, epsilon)))
-        mesh.skip (it);
+      if (!mesh.is_ignored(it) && face_with_height_over_tolerance<GeomTraits> (mesh, it, epsilon))
+        mesh.make_buffer (it);
     
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end (); ++ it)
@@ -129,13 +191,13 @@ namespace internal
       bool first_in = false, last_in = false;
       do
       {
-        if (mesh.is_infinite(circ))
+        if (mesh.is_ignored(circ))
         {
           ++ circ;
           continue;
         }
 
-        if (mesh.is_skiped(circ))
+        if (mesh.is_buffer(circ))
         {
           if (!in)
             ++ nb_layers;
@@ -160,7 +222,8 @@ namespace internal
         circ = start;
         do
         {
-          mesh.skip(circ);
+          if (!mesh.is_ignored(circ))
+              mesh.make_buffer(circ);
           ++ circ;
         }
         while (circ != start);
@@ -170,7 +233,7 @@ namespace internal
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end (); ++ it)
     {
-      if (mesh.has_mesh_face (it) || mesh.is_skiped (it))
+      if (!mesh.is_default(it))
         continue;
 
       std::queue<typename SMCDT::Face_handle> todo;
@@ -182,7 +245,7 @@ namespace internal
         typename SMCDT::Face_handle current = todo.front();
         todo.pop();
 
-        if (mesh.has_mesh_face (current) || mesh.is_skiped (current))
+        if (!mesh.is_default(current))
           continue;
         
         current->info() = typename SMCDT::Face_index(0);
@@ -191,8 +254,7 @@ namespace internal
         for (std::size_t i = 0; i < 3; ++ i)
         {
           if (mesh.is_infinite (current->neighbor (i))
-              || mesh.has_mesh_face (current->neighbor(i))
-              || mesh.is_skiped (current->neighbor(i)))
+              || !mesh.is_default (current->neighbor(i)))
             continue;
 
           todo.push (current->neighbor(i));
@@ -200,12 +262,12 @@ namespace internal
         }
       }
 
-      if (cluster_is_large_enough<GeomTraits> (done, meshing_factor * epsilon))
+      if (cluster_is_large_enough<GeomTraits> (done, 3. * epsilon))
         for (std::size_t i = 0; i < done.size(); ++ i)
           mesh.add_face (done[i]);
       else
         for (std::size_t i = 0; i < done.size(); ++ i)
-          mesh.skip (done[i]);
+          mesh.make_buffer (done[i]);
     }
 
   }
@@ -222,9 +284,9 @@ namespace internal
       typename SMCDT::Face_handle f0 = it->first;
       typename SMCDT::Face_handle f1 = it->first->neighbor (it->second);
         
-      if (!(mesh.is_infinite (f0)) && !(mesh.is_infinite (f1))
-          && ((mesh.is_skiped(f0) && !(mesh.is_skiped(f1))) ||
-              (!(mesh.is_skiped(f0)) && mesh.is_skiped(f1))))
+      if (!(mesh.is_ignored (f0)) && !(mesh.is_ignored (f1))
+          && ((mesh.is_buffer(f0) && !(mesh.is_buffer(f1))) ||
+              (!(mesh.is_buffer(f0)) && mesh.is_buffer(f1))))
         mesh.insert_constraint (it->first->vertex ((it->second + 1)%3),
                                 it->first->vertex ((it->second + 2)%3));
     }
@@ -243,7 +305,7 @@ namespace internal
       bool rem = true;
       do
       {
-        if (!mesh.is_infinite (circ) && mesh.has_mesh_face(circ))
+        if (mesh.has_mesh_face(circ) || mesh.is_ignored(circ))
         {
           rem = false;
           break;
@@ -256,11 +318,11 @@ namespace internal
         mesh.remove (current);
     }
 
-    // Mark new faces as skiped
+    // Mark new faces as buffer
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin ();
          it != mesh.finite_faces_end(); ++ it)
-      if (!mesh.has_mesh_face(it))
-        mesh.skip(it);
+      if (mesh.is_default(it))
+        mesh.make_buffer(it);
   }
 
   template <typename GeomTraits>
@@ -285,11 +347,11 @@ namespace internal
     for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
          it != mesh.finite_edges_end(); ++ it)
     {
-      if (mesh.is_infinite (it->first) ||
-          mesh.is_infinite (it->first->neighbor(it->second)))
+      if (mesh.is_ignored (it->first) ||
+          mesh.is_ignored (it->first->neighbor(it->second)))
         continue;
 
-      if (mesh.is_skiped(it->first) && mesh.is_skiped(it->first->neighbor(it->second)))
+      if (mesh.is_buffer(it->first) && mesh.is_buffer(it->first->neighbor(it->second)))
       {
         typename Map_v2v::iterator map0, map1;
         bool inserted = false;
@@ -388,9 +450,204 @@ namespace internal
         }
       }
 
+      
       std::sort (tokeep.begin(), tokeep.end());
+      for (std::size_t j = 0; j < graph[i].size() - 1; ++ j)
+        remove_edge (graph[i][j], graph[i][j+1], graph);
+
+      std::vector<typename Graph::vertex_descriptor> new_polyline;
+      for (std::size_t j = 0; j < tokeep.size(); ++ j)
+      {
+        new_polyline.push_back (graph[i][tokeep[j]]);
+        if (j != tokeep.size() - 1)
+          add_edge (graph[i][tokeep[j]], graph[i][tokeep[j+1]], graph);
+      }
+
+      for (std::size_t j = 0; j < graph[i].size(); ++ j)
+        if (degree (graph[i][j], graph) == 0)
+          remove_vertex (graph[i][j], graph);
+
+      graph[i].swap (new_polyline);
     }
   }
+
+  template <typename GeomTraits>
+  void create_mesh_with_borders (Surface_mesh_on_cdt<GeomTraits>& input,
+                                 Border_graph<GeomTraits>& graph,
+                                 Surface_mesh_on_cdt<GeomTraits>& output,
+                                 double epsilon)
+  {
+    typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
+
+    typename SMCDT::CDT map;
+
+    // Insert borders in CDT and map
+    for (std::size_t i = 0; i < graph.size(); ++ i)
+    {
+      typename SMCDT::Vertex_handle previous_cdt = output.insert (graph.point(graph[i][0]));
+      typename SMCDT::Vertex_handle previous_map = map.insert (graph.point(graph[i][0]));
+      
+      for (std::size_t j = 1; j < graph[i].size(); ++ j)
+      {
+        const typename GeomTraits::Point_2& next = graph.point(graph[i][j]);
+        typename GeomTraits::Vector_2 vec (previous_cdt->point(), next);
+        std::size_t nb_pts = std::max(std::size_t(1), std::size_t(std::sqrt(vec*vec) / epsilon));
+
+        typename SMCDT::Vertex_handle current_cdt = previous_cdt;
+
+        for (std::size_t k = 1; k <= nb_pts; ++ k)
+        {
+          typename GeomTraits::Point_2 point
+            = previous_cdt->point() + (k / double(nb_pts)) * vec;
+
+          typename SMCDT::Vertex_handle next_cdt = output.insert (point);
+          output.insert_constraint (current_cdt, next_cdt);
+          current_cdt = next_cdt;
+        }
+        previous_cdt = current_cdt;
+
+        typename SMCDT::Vertex_handle current_map = map.insert (graph.point(graph[i][j]));
+        map.insert_constraint (previous_map, current_map);
+        previous_map = current_map;
+      }
+    }
+
+    // Insert vertices not too close to borders
+    typename SMCDT::Face_handle located = typename SMCDT::Face_handle();
+
+    for (typename SMCDT::Finite_vertices_iterator it = input.finite_vertices_begin();
+         it != input.finite_vertices_end(); ++ it)
+    {
+      located = map.locate (it->point(), located);
+
+      bool far_enough = true;
+
+      std::queue<typename SMCDT::Edge> todo;
+      for (std::size_t i = 0; i < 3; ++ i)
+        todo.push(std::make_pair (located, i));
+
+      while (!todo.empty())
+      {
+        typename SMCDT::Edge e = todo.front();
+        todo.pop();
+        
+        typename GeomTraits::Segment_2 s (e.first->vertex ((e.second+1)%3)->point(),
+                                          e.first->vertex ((e.second+2)%3)->point());
+        if (!map.is_constrained (e))
+        {
+          if (CGAL::squared_distance (it->point(), s) < epsilon * epsilon)
+          {
+            typename SMCDT::Face_handle next_face = e.first->neighbor(e.second);
+            int next_idx = next_face->index(e.first);
+            todo.push(std::make_pair (next_face, (next_idx + 1) % 3));
+            todo.push(std::make_pair (next_face, (next_idx + 2) % 3));
+          }
+        }
+        else
+        {
+          if (CGAL::squared_distance (it->point(), s) < epsilon * epsilon)
+          {
+            far_enough = false;
+            break;
+          }
+        }
+      }
+
+      if (far_enough)
+        output.insert (input.point(it));
+    }
+
+    ignore_faces_close_to_infinite_vertex<GeomTraits> (output, epsilon);
+    
+    // Create existing faces
+    for (typename SMCDT::Finite_faces_iterator it = output.finite_faces_begin();
+         it != output.finite_faces_end (); ++ it)
+      if (!output.is_ignored(it))
+      {
+        bool to_insert = true;
+        for (std::size_t i = 0; i < 3; ++ i)
+          if (!output.has_mesh_vertex (it->vertex(i)))
+          {
+            to_insert = false;
+            break;
+          }
+        if (to_insert)
+          output.add_face(it);
+      }
+    
+  }
+  
+  template <typename GeomTraits>
+  void generate_missing_3d_points (Surface_mesh_on_cdt<GeomTraits>& mesh,
+                                   double epsilon)
+  {
+    typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
+
+    for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
+         it != mesh.finite_vertices_end(); ++ it)
+    {
+      if (mesh.has_mesh_vertex(it))
+        continue;
+
+      typename SMCDT::Edge_circulator circ = mesh.incident_edges(it), start = circ;
+      do
+      {
+        if (mesh.is_constrained(*circ))
+        {
+          typename SMCDT::Vertex_handle neighbor = circ->first->vertex((circ->second + 1)%3);
+          if (neighbor == &*it)
+            neighbor = circ->first->vertex((circ->second + 2)%3);
+
+          mesh.insert (it,
+                       typename GeomTraits::Point_3 (it->point().x(), it->point().y(),
+                                                     std::numeric_limits<double>::quiet_NaN()),
+                       typename GeomTraits::Direction_2
+                       (typename GeomTraits::Vector_2 (it->point(), neighbor->point())));
+        }
+        
+        ++ circ;
+      }
+      while (circ != start);
+
+      mesh.estimate_missing_heights(it, epsilon);
+
+    }
+
+    for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
+         it != mesh.finite_faces_end (); ++ it)
+      if (!mesh.has_mesh_face(it))
+      {
+        typename SMCDT::Vertex_index v[3];
+        bool okay = true;
+        for (std::size_t i = 0; i < 3; ++ i)
+        {
+          if (mesh.has_unique_mesh_vertex(it->vertex(i)))
+            v[i] = mesh.mesh_vertex (it->vertex(i));
+          else if (mesh.has_mesh_vertex (it->vertex(i)))
+          {
+            typename GeomTraits::Point_2 ref = midpoint<GeomTraits>(it);
+            std::size_t idx = mesh.find_section_of_point_from_vertex_view (it->vertex(i), ref);
+            v[i] = mesh.mesh_vertex(it->vertex(i), idx);
+          }
+          else
+          {
+            okay = false;
+            break;
+          }
+
+          if (!mesh.has_defined_height (v[i]))
+          {
+            okay = false;
+            break;
+          }
+        }
+        
+        if (okay)
+          mesh.add_face(it, v[0], v[1], v[2]);
+      }
+
+  }
+
   
 } // namespace internal
 
@@ -402,39 +659,54 @@ void top_view_surface_reconstruction (PointInputIterator begin,
                                       PointMap point_map,
                                       Surface_mesh_on_cdt<GeomTraits>& output_mesh,
                                       double spacing,
-                                      double meshing_factor = 3.,
+                                      double meshing_factor = 2.,
                                       double quantile = 0.5)
 {
 //  typedef typename GeomTraits::Point_3 Point_3;
-//  typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
+  typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
   typedef Border_graph<GeomTraits> Graph;
+
+  SMCDT tmp_mesh;
   
   Top_view_surface_reconstruction_3::internal::insert_filtered_points<GeomTraits>
-    (begin, end, point_map, output_mesh, spacing, quantile);
+    (begin, end, point_map, tmp_mesh, spacing, quantile);
 
   Top_view_surface_reconstruction_3::internal::filter_faces<GeomTraits>
-    (output_mesh, spacing, meshing_factor);
+    (tmp_mesh, spacing * meshing_factor);
 
-  output_mesh.DEBUG_dump_off_0();
+  tmp_mesh.DEBUG_dump_off_0();
   
   Top_view_surface_reconstruction_3::internal::cleanup_buffer_zone<GeomTraits>
-    (output_mesh);
+    (tmp_mesh);
 
-  output_mesh.DEBUG_dump_off_2();
+  tmp_mesh.DEBUG_dump_off_2();
+
+  tmp_mesh.DEBUG_dump_off_3();
 
   Graph graph;
 
   Top_view_surface_reconstruction_3::internal::build_border_graph<GeomTraits>
-    (output_mesh, graph);
+    (tmp_mesh, graph);
 
-  graph.filter_small_terminal_borders(spacing * meshing_factor);
+  graph.filter_small_terminal_borders(10. * spacing * meshing_factor); // Find correct parameter
   graph.split_into_polylines();
+  tmp_mesh.DEBUG_dump_poly();
 
   Top_view_surface_reconstruction_3::internal::simplify_border_graph<GeomTraits>
-    (output_mesh, graph, spacing * meshing_factor);
+    (tmp_mesh, graph, spacing * meshing_factor);
   
   graph.DEBUG_dump_poly();
 
+  Top_view_surface_reconstruction_3::internal::create_mesh_with_borders<GeomTraits>
+    (tmp_mesh, graph, output_mesh, spacing * meshing_factor);
+
+  output_mesh.DEBUG_dump_off_0();
+  output_mesh.DEBUG_dump_off_4();
+
+  Top_view_surface_reconstruction_3::internal::generate_missing_3d_points<GeomTraits>
+    (output_mesh, spacing * meshing_factor);
+
+  output_mesh.DEBUG_dump_off_1();
 }
 
 } // namespace CGAL

@@ -80,7 +80,8 @@ public:
 
   void filter_small_terminal_borders (double epsilon)
   {
-
+    std::vector<std::pair<double, vertex_descriptor> > terminal_vertices;
+    
     BOOST_FOREACH (vertex_descriptor vd, vertices(*this))
     {
       if (degree(vd, *this) != 1)
@@ -118,11 +119,52 @@ public:
       }
 
       if (length < epsilon)
+        terminal_vertices.push_back (std::make_pair (length, vd));
+    }
+
+    std::sort (terminal_vertices.begin(), terminal_vertices.end());
+    for (std::size_t i = 0; i < terminal_vertices.size(); ++ i)
+    {
+      vertex_descriptor vd = terminal_vertices[i].second;
+      if (degree(vd, *this) != 1)
+        continue;
+      
+      double length = 0.;
+      
+      vertex_descriptor previous = vd;
+      vertex_descriptor current = *(boost::adjacent_vertices(previous, *this).first);
+      std::vector<vertex_descriptor> visited;
+      visited.push_back (previous);
+      
+      while (true)
       {
+        visited.push_back (current);
+        length += std::sqrt (CGAL::squared_distance (point(previous),
+                                                     point(current)));
+
+        if (length > epsilon)
+          break;
+
+        if (degree (current, *this) != 2)
+          break;
+        
+        vertex_descriptor next = current;
+        BOOST_FOREACH (vertex_descriptor avd, boost::adjacent_vertices(current, *this))
+          if (avd != previous)
+          {
+            next = avd;
+            break;
+          }
+
+        previous = current;
+        current = next;
+      }
+
+      if (length < epsilon)
         for (std::size_t j = 0; j < visited.size() - 1; ++ j)
           remove_edge (visited[j], visited[j+1], *this);
-      }
     }
+    
 
     std::vector<vertex_descriptor> to_remove;
     BOOST_FOREACH (vertex_descriptor vd, vertices(*this))
