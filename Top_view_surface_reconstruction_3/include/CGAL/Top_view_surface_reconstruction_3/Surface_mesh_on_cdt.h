@@ -8,7 +8,11 @@
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Constrained_triangulation_plus_2.h>
 
+#include <CGAL/linear_least_squares_fitting_3.h>
+
 #include <CGAL/Surface_mesh.h>
+
+#include <CGAL/Random.h>
 
 #include <fstream>
 #include <queue>
@@ -25,6 +29,9 @@ public:
   
   typedef GeomTraits Kernel;
   typedef typename Kernel::Point_3 Point_3;
+  typedef typename Kernel::Vector_3 Vector_3;
+  typedef typename Kernel::Line_3 Line_3;
+  typedef typename Kernel::Plane_3 Plane_3;
   typedef typename Kernel::Point_2 Point_2;
   typedef typename Kernel::Vector_2 Vector_2;
   typedef typename Kernel::Direction_2 Direction_2;
@@ -50,15 +57,30 @@ public:
   typedef typename CDT::Face_circulator Face_circulator;
   typedef typename CDT::Locate_type Locate_type;
 
-  typedef typename Mesh::template Property_map<Vertex_index, Vertex_handle> V2V_map;
-  typedef typename Mesh::template Property_map<Face_index, Face_handle> F2F_map;
+  typedef typename Mesh::template Property_map<Vertex_index, Vertex_handle> V2V_map; // Mesh vertex to CDT vertex
+  typedef typename Mesh::template Property_map<Vertex_index, Vertex_index> NVN_map; // Mesh vertex to next vertical mesh vertex
+  typedef typename Mesh::template Property_map<Face_index, Face_handle> F2F_map; // Mesh face to CDT face
 
 private:
+
+  struct Vertex_handle_to_point : public std::unary_function<Vertex_handle, Point_3>
+  {
+    Self& mesh;
+
+    Vertex_handle_to_point (Self& mesh) : mesh (mesh) { }
+
+    Point_3 operator()(const Vertex_handle& vh) const
+    {
+      return mesh.point(vh);
+    }
+    
+  };
 
   Mesh m_mesh;
   CDT m_cdt;
 
   V2V_map m_v2v_map;
+  NVN_map m_nvv_map;
   F2F_map m_f2f_map;
 
 public:
@@ -68,6 +90,8 @@ public:
     bool okay = false;
     boost::tie(m_v2v_map, okay) = m_mesh.template add_property_map<Vertex_index, Vertex_handle>("v:cdt_vertex");
     assert (okay);
+    boost::tie(m_nvv_map, okay) = m_mesh.template add_property_map<Vertex_index, Vertex_index>("v:next_vertical_vertex");
+    assert (okay);
     boost::tie(m_f2f_map, okay) = m_mesh.template add_property_map<Face_index, Face_handle>("f:cdt_face");
     assert (okay);
   }
@@ -75,10 +99,11 @@ public:
   Vertex_handle cdt_vertex (Vertex_index vi) const { return m_v2v_map[vi]; }
   Vertex_index mesh_vertex (Vertex_handle vh, std::size_t idx = 0) const { return vh->info()[idx].second; }
   bool has_mesh_vertex (Vertex_handle vh) const { return !vh->info().empty(); }
+  std::size_t number_of_mesh_vertices (Vertex_handle vh) const { return vh->info().size(); }
   
   bool has_unique_mesh_vertex (Vertex_handle vh) const
   {
-    return (vh->info().size() == 1 && vh->info()[0].first == Direction_2(0,1));
+    return (vh->info().size() == 1 && vh->info()[0].first == Direction_2(0,0));
   }
   bool is_border_vertex (Vertex_index vi) const { return (degree(cdt_vertex(vi)) > 1); }
 
@@ -86,6 +111,29 @@ public:
   {
     const Point_3& p = point(vi);
     return (p.z() == p.z()); // NaN test
+  }
+
+  bool is_valid (Vertex_handle vh) const
+  {
+    for (std::size_t i = 0; i < vh->info().size(); ++ i)
+      if (point (vh, i).z() != point (vh, i).z())
+        return false;
+    return true;
+  }
+
+  Vertex_index next_vertex (Vertex_index vi)
+  {
+    if (m_nvv_map[vi] >= m_mesh.number_of_vertices())
+    {
+      std::cerr.precision(18);
+      std::cerr << point(vi) << std::endl;
+      std::cerr << vi << " next is " << m_nvv_map[vi] << std::endl;
+    }
+    return m_nvv_map[vi];
+  }
+  void set_next_vertex (Vertex_index vi, Vertex_index vnext)
+  {
+    m_nvv_map[vi] = vnext;
   }
 
 
@@ -108,10 +156,38 @@ public:
   Vertex_circulator incident_vertices (Vertex_handle vh) { return m_cdt.incident_vertices (vh); }
   void insert_constraint (Vertex_handle v0, Vertex_handle v1) { m_cdt.insert_constraint (v0, v1); }
   bool are_there_incident_constraints (Vertex_handle vh) { return m_cdt.are_there_incident_constraints (vh); }
+
+  template <typename OutputItEdges>
+  OutputItEdges incident_constraints (Vertex_handle vh, OutputItEdges output) const
+  {
+    return m_cdt.incident_constraints (vh, output);
+  }
+
+  bool remove_constraint (Vertex_handle a, Vertex_handle b)
+  {
+    Face_handle f;
+    int idx;
+    if(m_cdt.is_edge (a, b, f, idx))
+    {
+      m_cdt.remove_constraint (f, idx);
+      return true;
+    }
+    
+    return false;
+  }
+  
   bool is_constrained (Edge e) { return m_cdt.is_constrained (e); }
                                   
   bool is_infinite (Face_handle fh) const { return m_cdt.is_infinite(fh); }
 
+  bool has_at_least_one_mesh_vertex (Face_handle f) const
+  {
+    for (std::size_t i = 0; i < 3; ++ i)
+      if (has_mesh_vertex (f->vertex(i)))
+        return true;
+    return false;
+  }
+  
   bool has_mesh_face (Face_handle fh) const { return (int(fh->info()) >= 0); }
   bool is_default (Face_handle fh) const { return (int(fh->info()) == -1); }
   void make_default (Face_handle fh) { fh->info() = Face_index(-1); }
@@ -124,7 +200,8 @@ public:
   int ccw (int i) const { return m_cdt.ccw(i); }
 
   const Point_3& point (Vertex_index vi) const { return m_mesh.point(vi); }
-  const Point_3& point (Vertex_handle vh) const { return m_mesh.point(mesh_vertex(vh)); }
+  const Point_3& point (Vertex_handle vh, std::size_t idx = 0) const { return m_mesh.point(mesh_vertex(vh, idx)); }
+  Point_3& point (Vertex_handle vh, std::size_t idx = 0) { return m_mesh.point(mesh_vertex(vh, idx)); }
 
   const Point_3& point_from_vertex_view (Vertex_handle vh, Vertex_handle view) const
   {
@@ -140,7 +217,7 @@ public:
   {
     Vertex_handle vh = m_cdt.insert (Point_2 (point.x(), point.y()));
     Vertex_index vi = m_mesh.add_vertex (point);
-    vh->info().push_back(std::make_pair(Direction_2(0,1), vi));
+    vh->info().push_back(std::make_pair(Direction_2(0,0), vi));
     m_v2v_map[vi] = vh;
     return vh;
   }
@@ -151,6 +228,13 @@ public:
     vh->info().push_back(std::make_pair(direction, vi));
     m_v2v_map[vi] = vh;
     return vh;
+  }
+
+  Vertex_index insert (Vertex_handle vh, const Point_3& point)
+  {
+    Vertex_index vi = m_mesh.add_vertex (point);
+    m_v2v_map[vi] = vh;
+    return vi;
   }
 
   void remove (Vertex_handle vh)
@@ -177,6 +261,8 @@ public:
     return degree;
   }
 
+
+
   void add_face (Face_handle fh)
   {
     Face_index fi = m_mesh.add_face (fh->vertex(0)->info()[0].second,
@@ -193,22 +279,67 @@ public:
     m_f2f_map[fi] = fh;
   }
 
+  void add_face (Vertex_index a, Vertex_index b, Vertex_index c)
+  {
+//    Face_index fi =
+    m_mesh.add_face (a, b, c);
+//    std::cerr << fi << " ";
+    // if (fi >= m_mesh.number_of_faces())
+    //   std::cerr << "WHAT?!" << std::endl;
+    // m_f2f_map[fi] = Face_handle();
+  }
+
   std::size_t find_section_of_point_from_vertex_view (Vertex_handle vh, const Point_2& point)
   {
     if (vh->info().size() == 1)
       return 0;
 
     Direction_2 direction (Vector_2 (vh->point(), point));
-    for (std::size_t i = 0; i <= vh->info().size(); ++ i)
+    for (std::size_t i = 0; i < vh->info().size(); ++ i)
       if (direction.counterclockwise_in_between (vh->info()[i].first,
                                                  vh->info()[(i+1)%(vh->info().size())].first))
         return i;
-    
+
+    std::cerr << "Warning section" << std::endl;
     return 0;
   }
 
-  void get_neighborhood (Vertex_handle vh, double epsilon,
-                         std::vector<std::vector<Vertex_handle> >& neighborhood)
+  std::size_t find_section_of_point_from_vertex_view_DEBUG (Vertex_handle vh, const Point_2& point)
+  {
+    if (vh->info().size() == 1)
+      return 0;
+
+    static std::size_t occur = 0;
+    static Point_2 to_log (72110.151041666672, 162618.42708333334);
+
+    Direction_2 direction (Vector_2 (vh->point(), point));
+    for (std::size_t i = 0; i < vh->info().size(); ++ i)
+      if (direction.counterclockwise_in_between (vh->info()[i].first,
+                                                 vh->info()[(i+1)%(vh->info().size())].first))
+      {
+        if (CGAL::squared_distance(vh->point(), to_log) < 1e-10)
+        {
+          occur ++;
+          if (occur == 3)
+          {
+            std::ofstream f1("section.polylines.txt");
+            f1.precision(18);
+            f1 << "3 " << (vh->point() + vh->info()[i].first.to_vector()) << " 0 "
+               << vh->point() << " 0 "
+               << (vh->point() + vh->info()[(i+1)%(vh->info().size())].first.to_vector()) << " 0 " << std::endl;
+            std::ofstream f2("section.xyz");
+            f2.precision(18);
+            f2 << point << " 0" << std::endl;
+          }
+        }
+        return i;
+      }
+    std::cerr << "Warning section" << std::endl;
+    return 0;
+  }
+
+  void get_neighborhood_old (Vertex_handle vh, double epsilon,
+                             std::vector<std::vector<Vertex_handle> >& neighborhood)
   {
     neighborhood.resize (vh->info().size());
     
@@ -229,12 +360,14 @@ public:
 
       if (!(done.insert(current).second) ||
           m_cdt.is_infinite(current) ||
-          !has_unique_mesh_vertex(current) ||
           CGAL::squared_distance (vh->point(), current->point()) > epsilon * epsilon)
         continue;
 
-      std::size_t i = find_section_of_point_from_vertex_view (vh, current->point());
-      neighborhood[i].push_back (current);
+      if (has_unique_mesh_vertex(current))
+      {
+        std::size_t i = find_section_of_point_from_vertex_view (vh, current->point());
+        neighborhood[i].push_back (current);
+      }
       
       Vertex_circulator circ = m_cdt.incident_vertices (current), start = circ;
       do
@@ -246,61 +379,140 @@ public:
     }
   }
 
-  double estimate_height_with_pca (Vertex_handle vh, std::vector<Vertex_handle>& neighborhood)
+  Point_2 midpoint (Face_handle f)
   {
-    // TODO
-    return 0.;
+    return Point_2
+      ((f->vertex(0)->point().x() + f->vertex(1)->point().x() + f->vertex(2)->point().x()) / 3.,
+       (f->vertex(0)->point().y() + f->vertex(1)->point().y() + f->vertex(2)->point().y()) / 3.);
+  }
+  
+
+  
+  void get_neighborhood (Vertex_handle vh, double epsilon,
+                         std::vector<std::vector<Point_3> >& neighborhood,
+                         bool allow_border_propagation)
+  {
+    neighborhood.resize (vh->info().size());
+    
+    std::queue<std::pair<Face_handle, std::size_t> > todo;
+    Face_circulator circ = m_cdt.incident_faces (vh), start = circ;
+    do
+    {
+      Point_2 p = midpoint(circ);
+      std::size_t i = find_section_of_point_from_vertex_view (vh, p);
+      todo.push (std::make_pair (circ, i));
+      ++ circ;
+    }
+    while (circ != start);
+    
+    std::set<Face_handle> done;
+    std::set<Point_3> vertex_done;
+    
+    while (!todo.empty())
+    {
+      Face_handle current = todo.front().first;
+      std::size_t section = todo.front().second;
+      todo.pop();
+
+      if (!(done.insert(current).second) ||
+          m_cdt.is_infinite(current))
+        continue;
+
+      bool still_in = false;
+
+      for (std::size_t i = 0; i < 3; ++ i)
+      {
+        Vertex_handle vcurrent = current->vertex(i);
+
+        if (CGAL::squared_distance (vh->point(), vcurrent->point()) < epsilon * epsilon)
+          still_in = true;
+        
+        if (has_unique_mesh_vertex(vcurrent)
+            && vertex_done.insert (point(vcurrent)).second)
+          neighborhood[section].push_back (point(vcurrent));
+        else if (allow_border_propagation && has_mesh_vertex(vcurrent))
+        {
+          Point_2 ref = midpoint (current);
+          std::size_t this_section = find_section_of_point_from_vertex_view (vcurrent, ref);
+          if(has_defined_height(mesh_vertex(vcurrent, this_section))
+             && vertex_done.insert (point(vcurrent, this_section)).second)
+            neighborhood[section].push_back (point(vcurrent, this_section));
+        }
+
+      }
+
+      if (!still_in)
+        continue;
+
+      for (std::size_t i = 0; i < 3; ++ i)
+      {
+        Face_handle neighbor = current->neighbor(i);
+        if (!(m_cdt.is_constrained (std::make_pair (current, i))))
+          todo.push (std::make_pair(neighbor, section));
+      }
+      
+    }
   }
 
-  void estimate_missing_heights (Vertex_handle vh, double epsilon)
+  double estimate_height_with_pca (Vertex_handle vh, std::vector<Point_3>& neighborhood)
   {
-    std::ofstream f ("pts.xyz", std::ios_base::app);
-    std::vector<std::vector<Vertex_handle> > small_neighborhood;
-    get_neighborhood (vh, 3. * epsilon, small_neighborhood);
+    Plane_3 plane;
+    Point_3 centroid;
 
-    std::vector<std::vector<Vertex_handle> > big_neighborhood;
-    for (std::size_t i = 0; i < small_neighborhood.size(); ++ i)
-      if (small_neighborhood[i].empty())
-      {
-        get_neighborhood (vh, 15. * epsilon, big_neighborhood);
-        break;
-      }
+    CGAL::linear_least_squares_fitting_3 (neighborhood.begin(), neighborhood.end(),
+                                          plane, centroid, CGAL::Dimension_tag<0>());
+
+    Line_3 line (Point_3 (vh->point().x(), vh->point().y(), 0.),
+                 Vector_3 (0., 0., 1.));
+
+    typename CGAL::cpp11::result_of<typename Kernel::Intersect_3(Line_3, Plane_3)>::type
+      result = CGAL::intersection(line, plane);
+    Point_3* inter;
+    if (result && (inter = boost::get<Point_3>(&*result)))
+      return inter->z();
+    
+    return std::numeric_limits<double>::max();
+  }
+
+  void estimate_missing_heights (Vertex_handle vh, double epsilon, bool allow_border_propagation = false)
+  {
+    std::vector<std::vector<Point_3> > small_neighborhood;
+    get_neighborhood (vh, 3. * epsilon, small_neighborhood, allow_border_propagation);
     
     for (std::size_t i = 0; i < vh->info().size(); ++ i)
     {
-      // Get small neighborhood
-      std::vector<Vertex_handle>* neighborhood = &(small_neighborhood[i]);
-      
-      // If not large enough, get big neighborhood
-      if (neighborhood->empty())
-        neighborhood = &(big_neighborhood[i]);
+      if (has_defined_height(vh->info()[i].second))
+        continue;
+          
+      std::vector<Point_3>& neighborhood = small_neighborhood[i];
 
-      // If not large enough, give up for now
-      if (neighborhood->empty())
+      // If no neighbors, give up for now
+      if (neighborhood.empty())
         continue;
 
       // Reference height = closest neighbor's height
-      Vertex_handle closest = Vertex_handle();
+      Point_3 closest(0., 0., 0.);
       double dist_min = std::numeric_limits<double>::max();
-      for (std::size_t j = 0; j < neighborhood->size(); ++ j)
+      for (std::size_t j = 0; j < neighborhood.size(); ++ j)
       {
-        double dist = CGAL::squared_distance (vh->point(), (*neighborhood)[j]->point());
+        double dist = CGAL::squared_distance (vh->point(), Point_2(neighborhood[j].x(),
+                                                                   neighborhood[j].y()));
         if (dist < dist_min)
         {
           dist_min = dist;
-          closest = (*neighborhood)[j];
+          closest = neighborhood[j];
         }
       }
-
+      dist_min = std::sqrt (dist_min);
 
       Point_3 new_point = m_mesh.point(vh->info()[i].second);
 
-      double ref_z = point(closest).z();
+      double ref_z = closest.z();
 
       // Try PCA if not too far from reference
-      double pca_z = estimate_height_with_pca (vh, *neighborhood);
+      double pca_z = estimate_height_with_pca (vh, neighborhood);
 
-      if (CGAL::abs(ref_z - pca_z) < epsilon)
+      if (CGAL::abs(ref_z - pca_z) < (epsilon + dist_min))
         new_point = Point_3 (new_point.x(), new_point.y(), pca_z);
       else
         new_point = Point_3 (new_point.x(), new_point.y(), ref_z);
@@ -308,6 +520,77 @@ public:
       m_mesh.point(vh->info()[i].second) = new_point;
     }
 
+  }
+
+  void estimate_missing_heights_no_limit (Vertex_handle vh)
+  {
+    std::vector<bool> undefined (vh->info().size(), true);
+    for (std::size_t i = 0; i < vh->info().size(); ++ i)
+      if (has_defined_height(vh->info()[i].second))
+        undefined[i] = false;
+
+    std::queue<std::pair<Face_handle, std::size_t> > todo;
+    Face_circulator circ = m_cdt.incident_faces (vh), start = circ;
+    do
+    {
+      Point_2 p = midpoint(circ);
+      std::size_t i = find_section_of_point_from_vertex_view (vh, p);
+      if (undefined[i])
+        todo.push (std::make_pair (circ, i));
+      ++ circ;
+    }
+    while (circ != start);
+    
+    std::set<Face_handle> done;
+    
+    while (!todo.empty())
+    {
+      Face_handle current = todo.front().first;
+      std::size_t section = todo.front().second;
+      todo.pop();
+      if (!undefined[section])
+        continue;
+
+      if (!(done.insert(current).second) ||
+          m_cdt.is_infinite(current))
+        continue;
+
+      for (std::size_t i = 0; i < 3; ++ i)
+      {
+        Vertex_handle vcurrent = current->vertex(i);
+
+        if (has_unique_mesh_vertex(vcurrent))
+        {
+          Point_3 new_point = m_mesh.point(vh->info()[section].second);
+          new_point = Point_3 (new_point.x(), new_point.y(), point(vcurrent).z());
+          m_mesh.point (vh->info()[section].second) = new_point;
+          undefined[section] = false;
+          break;
+        }
+        else if (has_mesh_vertex(vcurrent))
+        {
+          Point_2 ref = midpoint (current);
+          std::size_t this_section = find_section_of_point_from_vertex_view (vcurrent, ref);
+          if(has_defined_height(mesh_vertex(vcurrent, this_section)))
+          {
+            // FOUND
+            Point_3 new_point = m_mesh.point(vh->info()[section].second);
+            new_point = Point_3 (new_point.x(), new_point.y(), point(vcurrent, this_section).z());
+            m_mesh.point (vh->info()[section].second) = new_point;
+            undefined[section] = false;
+            break;
+          }
+        }
+      }
+
+      for (std::size_t i = 0; i < 3; ++ i)
+      {
+        Face_handle neighbor = current->neighbor(i);
+        if (!(m_cdt.is_constrained (std::make_pair (current, i))))
+          todo.push (std::make_pair(neighbor, section));
+      }
+      
+    }
   }
 
   void DEBUG_dump_off_1() 
@@ -325,7 +608,23 @@ public:
     f.precision(18);
     f << m_mesh;    
   }
-  
+
+  void DEBUG_dump_off_5() 
+  {
+    for (typename Mesh::Vertex_range::iterator it = m_mesh.vertices().begin();
+         it != m_mesh.vertices().end(); ++ it)
+    {
+      const Point_3& p = m_mesh.point(*it);
+      if (p.z() != p.z())
+        m_mesh.point(*it) = Point_3 (p.x(), p.y(), 0);
+    }
+      
+    
+    std::ofstream f("debug5.off");
+    f.precision(18);
+    f << m_mesh;    
+  }
+
   void DEBUG_dump_off_0() const
   {
     std::ofstream f("debug0.off");

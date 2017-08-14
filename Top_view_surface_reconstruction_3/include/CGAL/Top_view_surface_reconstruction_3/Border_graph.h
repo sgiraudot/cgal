@@ -183,9 +183,9 @@ public:
   }
 
 
-  void DEBUG_dump_poly()
+  void DEBUG_dump_poly(const char* filename)
   {
-    std::ofstream f("debug.polylines.txt");
+    std::ofstream f(filename);
     f.precision(18);
 
     for (std::size_t i = 0; i < m_polylines.size(); ++ i)
