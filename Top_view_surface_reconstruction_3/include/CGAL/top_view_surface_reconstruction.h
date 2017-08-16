@@ -335,7 +335,9 @@ namespace internal
 
         bool skip = false;
         for (std::size_t k = 0; k < 3; ++ k)
-          if (CGAL::squared_distance (f->vertex(k)->point(), seg) < epsilon * epsilon)
+          if (//CGAL::squared_distance (f->vertex(k)->point(), seg) < epsilon * epsilon ||
+              CGAL::squared_distance (f->vertex((k+1)%3)->point(),
+                                      f->vertex((k+2)%3)->point()) > 9. * epsilon * epsilon)
           {
             skip = true;
             break;
@@ -369,7 +371,7 @@ namespace internal
   {
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
 
-    ignore_faces_close_to_infinite_vertex<GeomTraits> (mesh, 3. * epsilon);
+    ignore_faces_close_to_infinite_vertex<GeomTraits> (mesh, epsilon);
 
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end (); ++ it)
@@ -780,6 +782,13 @@ namespace internal
   {
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
 
+    std::ofstream f1 ("f1.xyz");
+    f1.precision(18);
+    std::ofstream f2 ("f2.xyz");
+    f2.precision(18);
+    std::ofstream f3 ("f3.xyz");
+    f3.precision(18);
+    
     // First pass: propagate heights of neighbor 3D points
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end(); ++ it)
@@ -809,7 +818,12 @@ namespace internal
       while (circ != start);
 
       mesh.estimate_missing_heights(it, epsilon);
-
+      for (std::size_t i = 0; i < mesh.number_of_mesh_vertices (it); ++ i)
+      {
+        const typename GeomTraits::Point_3& p = mesh.point (it, i);
+        if (p.z() == p.z())
+          f1 << p << std::endl;
+      }
     }
 
     // Second pass: if no 3D point close, propagate heights of neighbor borders
@@ -817,14 +831,26 @@ namespace internal
          it != mesh.finite_vertices_end(); ++ it)
     {
       bool to_do = false;
+      std::vector<bool> todo (mesh.number_of_mesh_vertices(it), false);
       for (std::size_t i = 0; i < mesh.number_of_mesh_vertices(it); ++ i)
         if (!mesh.has_defined_height(mesh.mesh_vertex(it, i)))
         {
           to_do = true;
-          break;
+          todo[i] = true;
+//          break;
         }
       if (to_do)
         mesh.estimate_missing_heights(it, epsilon, true);
+
+      for (std::size_t i = 0; i < mesh.number_of_mesh_vertices (it); ++ i)
+      {
+        if (todo[i])
+        {
+          const typename GeomTraits::Point_3& p = mesh.point (it, i);
+          if (p.z() == p.z())
+            f2 << p << std::endl;
+        }
+      }
     }
 
     // Third pass: if no point close, propagate from closest
@@ -832,14 +858,25 @@ namespace internal
          it != mesh.finite_vertices_end(); ++ it)
     {
       bool to_do = false;
+      std::vector<bool> todo (mesh.number_of_mesh_vertices(it), false);
       for (std::size_t i = 0; i < mesh.number_of_mesh_vertices(it); ++ i)
         if (!mesh.has_defined_height(mesh.mesh_vertex(it, i)))
         {
           to_do = true;
-          break;
+          todo[i] = true;
+//          break;
         }
       if (to_do)
         mesh.estimate_missing_heights_no_limit(it);
+      for (std::size_t i = 0; i < mesh.number_of_mesh_vertices (it); ++ i)
+      {
+        if (todo[i])
+        {
+          const typename GeomTraits::Point_3& p = mesh.point (it, i);
+          if (p.z() == p.z())
+            f3 << p << std::endl;
+        }
+      }
     }
 
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
@@ -895,6 +932,9 @@ namespace internal
       typename SMCDT::Face_handle
         fe = it->first,
         fo = fe->neighbor (idx);
+
+      if (!mesh.has_mesh_face (fe) || !mesh.has_mesh_face (fo))
+        continue;
       
       typename GeomTraits::Point_2
         re = mesh.midpoint(fe),
@@ -923,18 +963,11 @@ namespace internal
            << "2 " << poa << " " << pob << std::endl;
 
       if (CGAL::abs(pea.z() - poa.z()) < CGAL::abs(peb.z() - pob.z())) // snap to A
-      {
-        double z = (pea.z() + poa.z()) / 2.;
-        pea = typename GeomTraits::Point_3 (pea.x(), pea.y(), z);
-        poa = typename GeomTraits::Point_3 (poa.x(), poa.y(), z);
-      }
+        mesh.merge_vertices (mesh.mesh_vertex (va, sea),
+                             mesh.mesh_vertex (va, soa));
       else // snap to B
-      {
-        double z = (peb.z() + pob.z()) / 2.;
-        peb = typename GeomTraits::Point_3 (peb.x(), peb.y(), z);
-        pob = typename GeomTraits::Point_3 (pob.x(), pob.y(), z);
-      }
-      
+        mesh.merge_vertices (mesh.mesh_vertex (vb, seb),
+                             mesh.mesh_vertex (vb, sob));
     }
   }
   
@@ -1007,12 +1040,13 @@ namespace internal
           vertex = mesh.insert (it, new_point);
         }
         file << mesh.point (vertex) << std::endl;
-                  
+
         mesh.set_next_vertex (latest_vertex, vertex);
         latest_vertex = vertex;
       }
     }
 
+    mesh.check_structure_integrity();
 
     std::cerr << "Faces" << std::endl;
     
@@ -1028,6 +1062,9 @@ namespace internal
       typename SMCDT::Face_handle
         fe = it->first,
         fo = fe->neighbor (idx);
+
+      if (!mesh.has_mesh_face (fe) || !mesh.has_mesh_face (fo))
+        continue;
 
       typename GeomTraits::Point_2
         re = mesh.midpoint(fe),
@@ -1060,6 +1097,13 @@ namespace internal
           continue;
       }
 
+      std::ofstream ff ("pts.xyz");
+      ff.precision(18);
+      ff << pea << std::endl
+         << peb << std::endl
+         << poa << std::endl
+         << pob << std::endl;
+
       double hamin = (std::min)(pea.z(), poa.z());
       double hamax = (std::max)(pea.z(), poa.z());
       double hbmin = (std::min)(peb.z(), pob.z());
@@ -1083,7 +1127,7 @@ namespace internal
           if (point_3.z() == pea.z())
             vva = vh;
         }
-        
+
         circ = mesh.next_vertex (circ);
       }
       while (start != circ);
@@ -1134,7 +1178,6 @@ namespace internal
       }
       else
         std::cerr << "Warning: vertices for orientation test not found" << std::endl;
-
 
       for (typename SMCDT::Finite_faces_iterator fit = cdt.finite_faces_begin();
            fit != cdt.finite_faces_end(); ++ fit)
@@ -1212,8 +1255,10 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   Top_view_surface_reconstruction_3::internal::generate_missing_3d_points<GeomTraits>
     (output_mesh, spacing * meshing_factor);
 
+  output_mesh.check_structure_integrity();
   Top_view_surface_reconstruction_3::internal::snap_intersecting_borders<GeomTraits>
     (output_mesh);
+  output_mesh.check_structure_integrity();
 
   Top_view_surface_reconstruction_3::internal::generate_vertical_walls<GeomTraits>
     (output_mesh, spacing * meshing_factor);

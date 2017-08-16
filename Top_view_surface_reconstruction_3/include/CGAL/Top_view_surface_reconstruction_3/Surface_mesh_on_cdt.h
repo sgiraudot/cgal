@@ -38,6 +38,7 @@ public:
   typedef Surface_mesh<Point_3> Mesh;
   typedef typename Mesh::Vertex_index Vertex_index;
   typedef typename Mesh::Face_index Face_index;
+  typedef typename Mesh::Halfedge_index Halfedge_index;
 
   typedef Triangulation_vertex_base_with_info_2<std::vector<std::pair<Direction_2, Vertex_index> >, Kernel>  Vbwi;
   typedef Triangulation_face_base_with_info_2<Face_index, Kernel> Fbwi;
@@ -123,12 +124,6 @@ public:
 
   Vertex_index next_vertex (Vertex_index vi)
   {
-    if (m_nvv_map[vi] >= m_mesh.number_of_vertices())
-    {
-      std::cerr.precision(18);
-      std::cerr << point(vi) << std::endl;
-      std::cerr << vi << " next is " << m_nvv_map[vi] << std::endl;
-    }
     return m_nvv_map[vi];
   }
   void set_next_vertex (Vertex_index vi, Vertex_index vnext)
@@ -200,6 +195,7 @@ public:
   int ccw (int i) const { return m_cdt.ccw(i); }
 
   const Point_3& point (Vertex_index vi) const { return m_mesh.point(vi); }
+  Point_3& point (Vertex_index vi) { return m_mesh.point(vi); }
   const Point_3& point (Vertex_handle vh, std::size_t idx = 0) const { return m_mesh.point(mesh_vertex(vh, idx)); }
   Point_3& point (Vertex_handle vh, std::size_t idx = 0) { return m_mesh.point(mesh_vertex(vh, idx)); }
 
@@ -287,6 +283,35 @@ public:
     // if (fi >= m_mesh.number_of_faces())
     //   std::cerr << "WHAT?!" << std::endl;
     // m_f2f_map[fi] = Face_handle();
+  }
+
+  void merge_vertices (Vertex_index a, Vertex_index b)
+  {
+    Point_3 new_point (point(a).x(), point(a).y(),
+                       0.5 * (point(a).z() + point(b).z()));
+
+    point(a) = new_point;
+    point(b) = new_point;
+    return;
+
+    Halfedge_index h = m_mesh.halfedge (b);
+
+    do
+    {
+      Halfedge_index current = h;
+      h = m_mesh.next_around_target (h);
+      m_mesh.set_target (current, a);
+    }
+    while (!m_mesh.is_border(h));
+
+    Vertex_handle vh = cdt_vertex (b);
+
+    for (std::size_t i = 0; i < number_of_mesh_vertices (vh); ++ i)
+      if (mesh_vertex (vh, i) == b)
+        vh->info()[i].second = a;
+      
+//    m_mesh.remove_vertex (b);
+
   }
 
   std::size_t find_section_of_point_from_vertex_view (Vertex_handle vh, const Point_2& point)
@@ -491,7 +516,10 @@ public:
         continue;
 
       // Reference height = closest neighbor's height
-      Point_3 closest(0., 0., 0.);
+      Point_3 closest(std::numeric_limits<double>::quiet_NaN(),
+                      std::numeric_limits<double>::quiet_NaN(),
+                      std::numeric_limits<double>::quiet_NaN());
+      
       double dist_min = std::numeric_limits<double>::max();
       for (std::size_t j = 0; j < neighborhood.size(); ++ j)
       {
@@ -591,6 +619,94 @@ public:
       }
       
     }
+  }
+
+  void check_structure_integrity()
+  {
+    static int nb = 0;
+    ++ nb;
+    std::cerr << "INTEGRITY CHECK " << nb << " BEGIN" << std::endl;
+    std::cerr.precision(18);
+
+    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin();
+         it != m_cdt.finite_vertices_end(); ++ it)
+    {
+      Vertex_handle vh = it;
+      for (std::size_t i = 0; i < vh->info().size(); ++ i)
+        if (m_v2v_map[vh->info()[i].second] != vh)
+          std::cerr << "  [Bad structure] Mesh vertex not connected to correct CDT vertex" << std::endl;
+    }
+
+    BOOST_FOREACH (Vertex_index vi, m_mesh.vertices())
+    {
+      Vertex_handle vh = m_v2v_map[vi];
+      if (vh == Vertex_handle())
+      {
+        std::cerr << "  [Bad structure] Mesh vertex not connected to any CDT vertex" << std::endl;
+        continue;
+      }
+      
+      // bool found = false;
+      // for (std::size_t i = 0; i < vh->info().size(); ++ i)
+      //   if (vh->info()[i].second == vi)
+      //   {
+      //     found = true;
+      //     break;
+      //   }
+      // if (!found)
+      //   std::cerr << "  [Bad structure] CDT vertex not connected to correct mesh vertex" << std::endl;
+
+      if (m_nvv_map[vi] == Vertex_index())
+        continue;
+      
+      std::set<Vertex_index> seen;
+      Vertex_index circ = vi;
+      do
+      {
+        if (!seen.insert (circ).second)
+        {
+          std::cerr << "  [Bad structure] Internal loop on vertical vertex circulator" << std::endl;
+          break;
+        }
+        if (circ == Vertex_index())
+        {
+          std::cerr << "  [Bad structure] Uninitialized index on vertical vertex circulator" << std::endl;
+          break;
+        }
+        circ = m_nvv_map[circ];
+      }
+      while (circ != vi);
+    }
+
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin();
+         it != m_cdt.finite_faces_end(); ++ it)
+    {
+      Face_handle fh = it;
+      if (is_ignored (fh))
+        continue;
+      if (is_default (fh))
+      {
+        std::cerr << "  [Bad structure] Uninitialized face" << std::endl;
+        continue;
+      }
+
+      if (m_f2f_map[fh->info()] != fh)
+        std::cerr << "  [Bad structure] Mesh face not connected to correct CDT face" << std::endl;
+    }
+           
+    BOOST_FOREACH (Face_index fi, m_mesh.faces())
+    {
+      Face_handle fh = m_f2f_map[fi];
+      if (fh == Face_handle())
+        continue;
+
+      if (fh->info() != fi)
+        std::cerr << "  [Bad structure] CDT face not connected to correct mesh face" << std::endl;
+    }
+
+    
+
+    std::cerr << "INTEGRITY CHECK " << nb << " END" << std::endl;
   }
 
   void DEBUG_dump_off_1() 
