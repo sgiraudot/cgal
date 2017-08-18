@@ -8,6 +8,8 @@
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Constrained_triangulation_plus_2.h>
 
+#include <CGAL/Polygon_mesh_processing/stitch_borders.h>
+
 #include <CGAL/linear_least_squares_fitting_3.h>
 
 #include <CGAL/Surface_mesh.h>
@@ -275,10 +277,12 @@ public:
     m_f2f_map[fi] = fh;
   }
 
-  void add_face (Vertex_index a, Vertex_index b, Vertex_index c)
+  bool add_face (Vertex_index a, Vertex_index b, Vertex_index c)
   {
-//    Face_index fi =
-    m_mesh.add_face (a, b, c);
+    Face_index fi =
+      m_mesh.add_face (a, b, c);
+
+    return (fi != Face_index());
 //    std::cerr << fi << " ";
     // if (fi >= m_mesh.number_of_faces())
     //   std::cerr << "WHAT?!" << std::endl;
@@ -291,9 +295,8 @@ public:
                        0.5 * (point(a).z() + point(b).z()));
 
     point(a) = new_point;
-    point(b) = new_point;
-    return;
 
+#ifdef TOP_VIEW_FIX_DUPLICATE_VERTICES
     Halfedge_index h = m_mesh.halfedge (b);
 
     do
@@ -311,7 +314,15 @@ public:
         vh->info()[i].second = a;
       
 //    m_mesh.remove_vertex (b);
+#else
+    point(b) = new_point;
+    return;
+#endif
+  }
 
+  void stitch_borders()
+  {
+    CGAL::Polygon_mesh_processing::stitch_borders (m_mesh);
   }
 
   std::size_t find_section_of_point_from_vertex_view (Vertex_handle vh, const Point_2& point)
@@ -628,6 +639,8 @@ public:
     std::cerr << "INTEGRITY CHECK " << nb << " BEGIN" << std::endl;
     std::cerr.precision(18);
 
+    m_mesh.is_valid (true);
+    
     for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin();
          it != m_cdt.finite_vertices_end(); ++ it)
     {
@@ -666,6 +679,11 @@ public:
         if (!seen.insert (circ).second)
         {
           std::cerr << "  [Bad structure] Internal loop on vertical vertex circulator" << std::endl;
+          std::ofstream file ("struct.xyz");
+          file.precision(18);
+          BOOST_FOREACH (Vertex_index vi, seen)
+            file << point(vi) << std::endl;
+          abort();
           break;
         }
         if (circ == Vertex_index())
@@ -678,6 +696,9 @@ public:
       while (circ != vi);
     }
 
+    std::ofstream uf ("ufaces.xyz");
+    uf.precision(18);
+    
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin();
          it != m_cdt.finite_faces_end(); ++ it)
     {
@@ -687,6 +708,8 @@ public:
       if (is_default (fh))
       {
         std::cerr << "  [Bad structure] Uninitialized face" << std::endl;
+        for (std::size_t i = 0; i < 3; ++ i)
+          uf << it->vertex(i)->point() << " 0" << std::endl;
         continue;
       }
 

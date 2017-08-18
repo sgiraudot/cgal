@@ -1,6 +1,8 @@
 #ifndef CGAL_TOP_VIEW_SURFACE_RECONSTRUCTION_H
 #define CGAL_TOP_VIEW_SURFACE_RECONSTRUCTION_H
 
+//#define TOP_VIEW_FIX_DUPLICATE_VERTICES
+
 #include <CGAL/Top_view_surface_reconstruction_3/Surface_mesh_on_cdt.h>
 #include <CGAL/Top_view_surface_reconstruction_3/Border_graph.h>
 
@@ -335,9 +337,7 @@ namespace internal
 
         bool skip = false;
         for (std::size_t k = 0; k < 3; ++ k)
-          if (//CGAL::squared_distance (f->vertex(k)->point(), seg) < epsilon * epsilon ||
-              CGAL::squared_distance (f->vertex((k+1)%3)->point(),
-                                      f->vertex((k+2)%3)->point()) > 9. * epsilon * epsilon)
+          if (CGAL::squared_distance (f->vertex(k)->point(), seg) < 9. * epsilon * epsilon)
           {
             skip = true;
             break;
@@ -921,18 +921,21 @@ namespace internal
 
     std::ofstream file ("inter.polylines.txt");
     file.precision(18);
-    
+
+    std::queue<typename SMCDT::Edge> todo;
     for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
          it != mesh.finite_edges_end(); ++ it)
-    {
-      if (!mesh.is_constrained(*it))
-        continue;
+      if (mesh.is_constrained(*it))
+        todo.push (*it);
 
-      int idx = it->second;
+    while (!todo.empty())
+    {
+      int idx = todo.front().second;
       typename SMCDT::Face_handle
-        fe = it->first,
+        fe = todo.front().first,
         fo = fe->neighbor (idx);
 
+      todo.pop();
       if (!mesh.has_mesh_face (fe) || !mesh.has_mesh_face (fo))
         continue;
       
@@ -956,18 +959,38 @@ namespace internal
         &poa = mesh.point(va, soa),
         &pob = mesh.point(vb, sob);
 
+      if (pea == poa || peb == pob)
+        continue;
+
       if ((pea.z() - poa.z()) * (peb.z() - pob.z()) > 0.) // Do borders intersect
         continue; // If no, no problem, continue
 
       file << "2 " << pea << " " << peb << std::endl
            << "2 " << poa << " " << pob << std::endl;
 
+      typename SMCDT::Vertex_handle merged = va;
+      typename SMCDT::Vertex_handle other = vb;
       if (CGAL::abs(pea.z() - poa.z()) < CGAL::abs(peb.z() - pob.z())) // snap to A
         mesh.merge_vertices (mesh.mesh_vertex (va, sea),
                              mesh.mesh_vertex (va, soa));
       else // snap to B
+      {
         mesh.merge_vertices (mesh.mesh_vertex (vb, seb),
                              mesh.mesh_vertex (vb, sob));
+        merged = vb;
+        other = va;
+      }
+
+      // Recheck neighbor edges
+      std::vector<typename SMCDT::Edge> incident;
+      mesh.incident_constraints (merged, std::back_inserter (incident));
+      if (incident.size() == 1)
+        continue;
+
+      for (std::size_t i = 0; i < incident.size(); ++ i)
+        if (incident[i].first->vertex ((incident[i].second + 1)%3) != other &&
+            incident[i].first->vertex ((incident[i].second + 2)%3) != other)
+          todo.push (incident[i]);
     }
   }
   
@@ -1021,14 +1044,12 @@ namespace internal
           heights.push_back (std::make_pair (h0 + (h1 - h0) * (j / double(nb_pts)), -1));
       }
 
-      if (size == heights.size())
-        continue;
-
       std::sort (heights.begin(), heights.end());
 
       CGAL_assertion (heights.back().second != -1);
         
       typename SMCDT::Vertex_index latest_vertex = mesh.mesh_vertex (it, std::size_t(heights.back().second));
+      mesh.set_next_vertex (latest_vertex, latest_vertex);
       for (std::size_t i = 0; i < heights.size(); ++ i)
       {
         typename SMCDT::Vertex_index vertex;
@@ -1040,8 +1061,13 @@ namespace internal
           vertex = mesh.insert (it, new_point);
         }
         file << mesh.point (vertex) << std::endl;
-
+        
+#ifdef TOP_VIEW_FIX_DUPLICATE_VERTICES
+        if (latest_vertex != vertex)
+          mesh.set_next_vertex (latest_vertex, vertex);
+#else
         mesh.set_next_vertex (latest_vertex, vertex);
+#endif
         latest_vertex = vertex;
       }
     }
@@ -1050,6 +1076,12 @@ namespace internal
 
     std::cerr << "Faces" << std::endl;
     
+    std::ofstream file2 ("faces.xyz");
+    file2.precision(18);
+
+    std::ofstream file3 ("notedge.polylines.txt");
+    file3.precision(18);
+
     // Generate walls
     for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
          it != mesh.finite_edges_end(); ++ it)
@@ -1097,13 +1129,19 @@ namespace internal
           continue;
       }
 
-      std::ofstream ff ("pts.xyz");
-      ff.precision(18);
-      ff << pea << std::endl
-         << peb << std::endl
-         << poa << std::endl
-         << pob << std::endl;
-
+      if (mesh.next_vertex (mesh.mesh_vertex(va)) == typename SMCDT::Vertex_index()
+          || mesh.next_vertex (mesh.mesh_vertex(vb)) == typename SMCDT::Vertex_index())
+      {
+        std::ofstream ff ("pts.xyz");
+        ff.precision(18);
+        ff << pea << std::endl
+           << peb << std::endl
+           << poa << std::endl
+           << pob << std::endl;
+        std::cerr << "EXIT" << std::endl;
+        abort();
+      }
+      
       double hamin = (std::min)(pea.z(), poa.z());
       double hamax = (std::max)(pea.z(), poa.z());
       double hbmin = (std::min)(peb.z(), pob.z());
@@ -1151,6 +1189,7 @@ namespace internal
       }
       while (start != circ);
 
+
       bool inverse_orientation = false;        
       if (vva != typename SMCDT::Vertex_handle() &&
           vvb != typename SMCDT::Vertex_handle() &&
@@ -1174,11 +1213,15 @@ namespace internal
             inverse_orientation = true;
         }
         else
+        {
           std::cerr << "Warning: vertices for orientation test are not on an edge" << std::endl;
+          file3 << "2 " << mesh.point(vva->info()[0].second) << " "
+                << mesh.point(vvb->info()[0].second) << std::endl;
+        }
       }
       else
         std::cerr << "Warning: vertices for orientation test not found" << std::endl;
-
+      
       for (typename SMCDT::Finite_faces_iterator fit = cdt.finite_faces_begin();
            fit != cdt.finite_faces_end(); ++ fit)
       {
@@ -1188,7 +1231,9 @@ namespace internal
           v2 = fit->vertex(2)->info()[0].second;
         if (inverse_orientation)
           std::swap (v0, v1);
-        mesh.add_face (v0, v1, v2);
+        if (!mesh.add_face (v0, v1, v2))
+          for (std::size_t k = 0; k < 3; ++ k)
+            file2 << mesh.point(fit->vertex(k)->info()[0].second) << std::endl;
       }
 
     }
@@ -1262,6 +1307,10 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   Top_view_surface_reconstruction_3::internal::generate_vertical_walls<GeomTraits>
     (output_mesh, spacing * meshing_factor);
+
+#ifndef TOP_VIEW_FIX_DUPLICATE_VERTICES
+  output_mesh.stitch_borders();
+#endif
 
   output_mesh.DEBUG_dump_off_5();
 
