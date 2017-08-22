@@ -2,6 +2,13 @@
 #define CGAL_TOP_VIEW_SURFACE_RECONSTRUCTION_H
 
 //#define TOP_VIEW_FIX_DUPLICATE_VERTICES
+#define TOP_VIEW_DEBUG
+
+#ifdef TOP_VIEW_DEBUG
+#define TOP_VIEW_CERR std::cerr
+#else
+#define TOP_VIEW_CERR std::ostream(0)
+#endif
 
 #include <CGAL/Top_view_surface_reconstruction_3/Surface_mesh_on_cdt.h>
 #include <CGAL/Top_view_surface_reconstruction_3/Border_graph.h>
@@ -337,7 +344,9 @@ namespace internal
 
         bool skip = false;
         for (std::size_t k = 0; k < 3; ++ k)
-          if (CGAL::squared_distance (f->vertex(k)->point(), seg) < 9. * epsilon * epsilon)
+          if (CGAL::squared_distance (f->vertex(k)->point(), seg) < epsilon * epsilon
+              || CGAL::squared_distance (f->vertex((k+1)%3)->point(),
+                                         f->vertex((k+2)%3)->point()) > 100. * epsilon * epsilon)
           {
             skip = true;
             break;
@@ -357,11 +366,40 @@ namespace internal
     }
     while (circ != start);
 
-    for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
-         it != mesh.finite_edges_end(); ++ it)
-      if (mesh.is_ignored(it->first) != mesh.is_ignored(it->first->neighbor(it->second)))
-        mesh.insert_constraint (it->first->vertex ((it->second + 1) % 3),
-                                it->first->vertex ((it->second + 2) % 3));
+    std::ofstream file ("ignored.xyz");
+    file.precision(18);
+    for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
+         it != mesh.finite_vertices_end(); ++ it)
+    {
+      if (!mesh.has_unique_mesh_vertex (it))
+        continue;
+      
+      bool ignored = true;
+      typename SMCDT::Face_circulator start = mesh.incident_faces(it);
+      typename SMCDT::Face_circulator circ = start;
+      do
+      {
+        if (!mesh.is_ignored(circ))
+        {
+          ignored = false;
+          break;
+        }
+        ++ circ;
+      }
+      while (circ != start);
+
+      if (ignored)
+      {
+        file << it->point() << " 0" << std::endl;
+        mesh.remove_mesh_vertex (it);
+      }
+    }
+    
+    // for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
+    //      it != mesh.finite_edges_end(); ++ it)
+    //   if (mesh.is_ignored(it->first) != mesh.is_ignored(it->first->neighbor(it->second)))
+    //     mesh.insert_constraint (it->first->vertex ((it->second + 1) % 3),
+    //                             it->first->vertex ((it->second + 2) % 3));
   }
 
   
@@ -789,7 +827,7 @@ namespace internal
     std::ofstream f3 ("f3.xyz");
     f3.precision(18);
     
-    // First pass: propagate heights of neighbor 3D points
+    TOP_VIEW_CERR << "  First pass: propagating heights of neighbor 3D points" << std::endl;
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end(); ++ it)
     {
@@ -826,7 +864,7 @@ namespace internal
       }
     }
 
-    // Second pass: if no 3D point close, propagate heights of neighbor borders
+    TOP_VIEW_CERR << "  Second pass: if no 3D point close, propagate heights of neighbor borders" << std::endl;
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end(); ++ it)
     {
@@ -853,12 +891,13 @@ namespace internal
       }
     }
 
-    // Third pass: if no point close, propagate from closest
+    TOP_VIEW_CERR << "  Third pass: if no point close, propagate from closest" << std::endl;
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end(); ++ it)
     {
       bool to_do = false;
       std::vector<bool> todo (mesh.number_of_mesh_vertices(it), false);
+
       for (std::size_t i = 0; i < mesh.number_of_mesh_vertices(it); ++ i)
         if (!mesh.has_defined_height(mesh.mesh_vertex(it, i)))
         {
@@ -866,19 +905,29 @@ namespace internal
           todo[i] = true;
 //          break;
         }
+      
       if (to_do)
         mesh.estimate_missing_heights_no_limit(it);
       for (std::size_t i = 0; i < mesh.number_of_mesh_vertices (it); ++ i)
       {
         if (todo[i])
         {
-          const typename GeomTraits::Point_3& p = mesh.point (it, i);
+          typename GeomTraits::Point_3& p = mesh.point (it, i);
           if (p.z() == p.z())
             f3 << p << std::endl;
+          else
+          {
+            mesh.remove (mesh.mesh_vertex(it, i));
+            todo.erase(todo.begin() + i);
+            -- i;
+          }
         }
       }
     }
 
+    mesh.check_structure_integrity();
+    
+    TOP_VIEW_CERR << "  Generating faces" << std::endl;
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end (); ++ it)
       if (!mesh.has_mesh_face(it) && !mesh.is_ignored(it))
@@ -909,7 +958,13 @@ namespace internal
         }
         
         if (okay)
+        {
           mesh.add_face(it, v[0], v[1], v[2]);
+        }
+        else
+        {
+          mesh.make_ignored (it);
+        }
       }
 
   }
@@ -1003,7 +1058,7 @@ namespace internal
     std::ofstream file ("vertical.xyz");
     file.precision(18);
 
-    std::cerr << "Points" << std::endl;
+    TOP_VIEW_CERR << "Points" << std::endl;
 
     // Generated support vertices
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
@@ -1074,7 +1129,7 @@ namespace internal
 
     mesh.check_structure_integrity();
 
-    std::cerr << "Faces" << std::endl;
+    TOP_VIEW_CERR << "Faces" << std::endl;
     
     std::ofstream file2 ("faces.xyz");
     file2.precision(18);
@@ -1214,13 +1269,13 @@ namespace internal
         }
         else
         {
-          std::cerr << "Warning: vertices for orientation test are not on an edge" << std::endl;
+          TOP_VIEW_CERR << "Warning: vertices for orientation test are not on an edge" << std::endl;
           file3 << "2 " << mesh.point(vva->info()[0].second) << " "
                 << mesh.point(vvb->info()[0].second) << std::endl;
         }
       }
       else
-        std::cerr << "Warning: vertices for orientation test not found" << std::endl;
+        TOP_VIEW_CERR << "Warning: vertices for orientation test not found" << std::endl;
       
       for (typename SMCDT::Finite_faces_iterator fit = cdt.finite_faces_begin();
            fit != cdt.finite_faces_end(); ++ fit)
@@ -1238,7 +1293,7 @@ namespace internal
 
     }
 
-    std::cerr << "DONE" << std::endl;
+    TOP_VIEW_CERR << "DONE" << std::endl;
   }
 } // namespace internal
 
@@ -1259,14 +1314,17 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   SMCDT tmp_mesh;
 
+  TOP_VIEW_CERR << "Inserting filtered points" << std::endl;
   Top_view_surface_reconstruction_3::internal::insert_filtered_points<GeomTraits>
     (begin, end, point_map, tmp_mesh, spacing, quantile);
 
+  TOP_VIEW_CERR << "Filtering faces" << std::endl;
   Top_view_surface_reconstruction_3::internal::filter_faces<GeomTraits>
     (tmp_mesh, spacing * meshing_factor);
 
   tmp_mesh.DEBUG_dump_off_0();
-  
+
+  TOP_VIEW_CERR << "Cleaning buffer zone" << std::endl;
   Top_view_surface_reconstruction_3::internal::cleanup_buffer_zone<GeomTraits>
     (tmp_mesh);
 
@@ -1276,19 +1334,22 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   Graph graph;
 
+  TOP_VIEW_CERR << "Building border graph" << std::endl;
   Top_view_surface_reconstruction_3::internal::build_border_graph<GeomTraits>
     (tmp_mesh, graph);
 
-  graph.filter_small_terminal_borders(10. * spacing * meshing_factor); // Find correct parameter
+  graph.filter_small_terminal_borders(10. * spacing * meshing_factor);
   graph.split_into_polylines();
   
   tmp_mesh.DEBUG_dump_poly();
   graph.DEBUG_dump_poly("poly_complex.polylines.txt");
+
+  TOP_VIEW_CERR << "Simplifying border graph" << std::endl;
   Top_view_surface_reconstruction_3::internal::simplify_border_graph<GeomTraits>
     (tmp_mesh, graph, spacing * meshing_factor);
   graph.DEBUG_dump_poly("poly_simplified.polylines.txt");
 
-
+  TOP_VIEW_CERR << "Creating mesh with borders" << std::endl;
   Top_view_surface_reconstruction_3::internal::create_mesh_with_borders<GeomTraits>
     (tmp_mesh, graph, output_mesh, spacing * meshing_factor);
 
@@ -1297,20 +1358,26 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   output_mesh.DEBUG_dump_off_1();
 
+  output_mesh.check_structure_integrity();
+  TOP_VIEW_CERR << "Generating missing 3D points" << std::endl;
   Top_view_surface_reconstruction_3::internal::generate_missing_3d_points<GeomTraits>
     (output_mesh, spacing * meshing_factor);
 
-  output_mesh.check_structure_integrity();
+
+  TOP_VIEW_CERR << "Snapping intersecting borders" << std::endl;
   Top_view_surface_reconstruction_3::internal::snap_intersecting_borders<GeomTraits>
     (output_mesh);
   output_mesh.check_structure_integrity();
 
+  TOP_VIEW_CERR << "Generating vertical walls" << std::endl;
   Top_view_surface_reconstruction_3::internal::generate_vertical_walls<GeomTraits>
     (output_mesh, spacing * meshing_factor);
 
 #ifndef TOP_VIEW_FIX_DUPLICATE_VERTICES
   output_mesh.stitch_borders();
 #endif
+
+  output_mesh.check_structure_integrity();
 
   output_mesh.DEBUG_dump_off_5();
 

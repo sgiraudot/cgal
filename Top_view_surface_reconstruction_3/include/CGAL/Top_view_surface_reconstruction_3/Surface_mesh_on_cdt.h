@@ -201,11 +201,6 @@ public:
   const Point_3& point (Vertex_handle vh, std::size_t idx = 0) const { return m_mesh.point(mesh_vertex(vh, idx)); }
   Point_3& point (Vertex_handle vh, std::size_t idx = 0) { return m_mesh.point(mesh_vertex(vh, idx)); }
 
-  const Point_3& point_from_vertex_view (Vertex_handle vh, Vertex_handle view) const
-  {
-    // TODO
-  }
-  
   Vertex_handle insert (const Point_2& point)
   {
     return m_cdt.insert (point);
@@ -237,7 +232,43 @@ public:
 
   void remove (Vertex_handle vh)
   {
+    remove_mesh_vertex (vh);
     m_cdt.remove (vh);
+  }
+
+  void remove (Vertex_index vi)
+  {
+    Vertex_handle vh = m_v2v_map[vi];
+    for (std::size_t i = 0; i < vh->info().size(); ++ i)
+      if (vh->info()[i].second == vi)
+      {
+        for (std::size_t j = i; j < vh->info().size() - 1; ++ j)
+          vh->info()[j] = vh->info()[j+1];
+        vh->info().resize(vh->info().size() - 1);
+        break;
+      }
+    m_mesh.remove_vertex (vi);
+  }
+
+  void remove_mesh_vertex (Vertex_handle vh)
+  {
+    if (vh->info().size() == 1)
+    {
+      bool faces = false;
+
+      BOOST_FOREACH (Face_index fi, faces_around_target (halfedge (vh->info()[0].second, m_mesh), m_mesh))
+      {
+        if (!faces)
+          std::cerr << "Remove vertex " << vh->info()[0].second << std::endl;
+        faces = true;
+        std::cerr << " * " << fi << std::endl;
+      }
+      if (faces)
+        exit(0);
+      
+      m_mesh.remove_vertex (vh->info()[0].second);
+      vh->info().clear();
+    }
   }
 
   void remove_incident_constraints (Vertex_handle vh)
@@ -273,8 +304,53 @@ public:
   void add_face (Face_handle fh, Vertex_index a, Vertex_index b, Vertex_index c)
   {
     Face_index fi = m_mesh.add_face (a, b, c);
-    fh->info() = fi;
-    m_f2f_map[fi] = fh;
+    if (fi != Face_index())
+    {
+      fh->info() = fi;
+      m_f2f_map[fi] = fh;
+    }
+    else
+    {
+      std::ofstream file ("bad.off");
+      file.precision(18);
+      file << "OFF\n3 1 0\n"
+           << point(a) << std::endl << point(b) << std::endl << point(c) << std::endl
+           << "3 0 1 2" << std::endl;
+
+      Vertex_index v[3]; v[0] = a; v[1] = b; v[2] = c;
+
+      for (std::size_t vn = 0; vn < 3; ++ vn)
+      {
+        std::set<Face_index> faces;
+        BOOST_FOREACH (Face_index idx, faces_around_target (halfedge (v[vn], m_mesh), m_mesh))
+          if (idx != Face_index())
+            faces.insert (idx);
+
+        std::ostringstream oss;
+        oss << "bad_" << vn << ".off";
+        std::ofstream file2 (oss.str().c_str());
+        
+        file2.precision(18);
+
+        file2 << "OFF" << std::endl
+              << faces.size() * 3 << " " << faces.size() << " 0" << std::endl;
+        BOOST_FOREACH (Face_index fi, faces)
+        {
+          std::cerr << fi;
+          BOOST_FOREACH (Vertex_index vi, vertices_around_face (halfedge(fi, m_mesh), m_mesh))
+          {
+            std::cerr << " " << vi;
+            file2 << point(vi) << std::endl;
+          }
+          std::cerr << std::endl;
+        }
+
+        for (std::size_t i = 0; i < faces.size(); ++ i)
+          file2 << "3 " << 3*i << " " << 3*i + 1 << " " << 3*i + 2 << std::endl;
+      }
+      
+      exit(0);
+    }
   }
 
   bool add_face (Vertex_index a, Vertex_index b, Vertex_index c)
@@ -316,6 +392,7 @@ public:
 //    m_mesh.remove_vertex (b);
 #else
     point(b) = new_point;
+
     return;
 #endif
   }
@@ -374,47 +451,6 @@ public:
     return 0;
   }
 
-  void get_neighborhood_old (Vertex_handle vh, double epsilon,
-                             std::vector<std::vector<Vertex_handle> >& neighborhood)
-  {
-    neighborhood.resize (vh->info().size());
-    
-    std::queue<Vertex_handle> todo;
-    Vertex_circulator circ = m_cdt.incident_vertices (vh), start = circ;
-    do
-    {
-      todo.push (circ);
-      ++ circ;
-    }
-    while (circ != start);
-    
-    std::set<Vertex_handle> done;
-    while (!todo.empty())
-    {
-      Vertex_handle current = todo.front();
-      todo.pop();
-
-      if (!(done.insert(current).second) ||
-          m_cdt.is_infinite(current) ||
-          CGAL::squared_distance (vh->point(), current->point()) > epsilon * epsilon)
-        continue;
-
-      if (has_unique_mesh_vertex(current))
-      {
-        std::size_t i = find_section_of_point_from_vertex_view (vh, current->point());
-        neighborhood[i].push_back (current);
-      }
-      
-      Vertex_circulator circ = m_cdt.incident_vertices (current), start = circ;
-      do
-      {
-        todo.push (circ);
-        ++ circ;
-      }
-      while (circ != start);
-    }
-  }
-
   Point_2 midpoint (Face_handle f)
   {
     return Point_2
@@ -423,7 +459,6 @@ public:
   }
   
 
-  
   void get_neighborhood (Vertex_handle vh, double epsilon,
                          std::vector<std::vector<Point_3> >& neighborhood,
                          bool allow_border_propagation)
@@ -434,9 +469,12 @@ public:
     Face_circulator circ = m_cdt.incident_faces (vh), start = circ;
     do
     {
-      Point_2 p = midpoint(circ);
-      std::size_t i = find_section_of_point_from_vertex_view (vh, p);
-      todo.push (std::make_pair (circ, i));
+      if (!is_ignored(circ))
+      {
+        Point_2 p = midpoint(circ);
+        std::size_t i = find_section_of_point_from_vertex_view (vh, p);
+        todo.push (std::make_pair (circ, i));
+      }
       ++ circ;
     }
     while (circ != start);
@@ -451,7 +489,8 @@ public:
       todo.pop();
 
       if (!(done.insert(current).second) ||
-          m_cdt.is_infinite(current))
+          m_cdt.is_infinite(current) ||
+          is_ignored(current))
         continue;
 
       bool still_in = false;
@@ -572,10 +611,13 @@ public:
     Face_circulator circ = m_cdt.incident_faces (vh), start = circ;
     do
     {
-      Point_2 p = midpoint(circ);
-      std::size_t i = find_section_of_point_from_vertex_view (vh, p);
-      if (undefined[i])
-        todo.push (std::make_pair (circ, i));
+      if (!is_ignored(circ))
+      {
+        Point_2 p = midpoint(circ);
+        std::size_t i = find_section_of_point_from_vertex_view (vh, p);
+        if (undefined[i])
+          todo.push (std::make_pair (circ, i));
+      }
       ++ circ;
     }
     while (circ != start);
@@ -591,7 +633,8 @@ public:
         continue;
 
       if (!(done.insert(current).second) ||
-          m_cdt.is_infinite(current))
+          m_cdt.is_infinite(current) ||
+          is_ignored(current))
         continue;
 
       for (std::size_t i = 0; i < 3; ++ i)
@@ -659,16 +702,6 @@ public:
         continue;
       }
       
-      // bool found = false;
-      // for (std::size_t i = 0; i < vh->info().size(); ++ i)
-      //   if (vh->info()[i].second == vi)
-      //   {
-      //     found = true;
-      //     break;
-      //   }
-      // if (!found)
-      //   std::cerr << "  [Bad structure] CDT vertex not connected to correct mesh vertex" << std::endl;
-
       if (m_nvv_map[vi] == Vertex_index())
         continue;
       
@@ -707,7 +740,7 @@ public:
         continue;
       if (is_default (fh))
       {
-        std::cerr << "  [Bad structure] Uninitialized face" << std::endl;
+//        std::cerr << "  [Bad structure] Uninitialized face" << std::endl;
         for (std::size_t i = 0; i < 3; ++ i)
           uf << it->vertex(i)->point() << " 0" << std::endl;
         continue;
@@ -725,6 +758,28 @@ public:
 
       if (fh->info() != fi)
         std::cerr << "  [Bad structure] CDT face not connected to correct mesh face" << std::endl;
+
+      BOOST_FOREACH (Vertex_index vi, vertices_around_face (halfedge (fi, m_mesh), m_mesh))
+      {
+        Vertex_handle vh = m_v2v_map[vi];
+
+        if (vh == Vertex_handle())
+        {
+          std::cerr << "  [Bad structure] Mesh face connected to mesh vertex without CDT vertex" << std::endl;
+          continue;
+        }
+
+        bool found = false;
+        for (std::size_t i = 0; i < 3; ++ i)
+          if (fh->vertex(i) == vh)
+          {
+            found = true;
+            break;
+          }
+
+        if (!found)
+          std::cerr << "  [Bad structure] Vertices of mesh face do not correpond to vertices of CDT face" << std::endl;
+      }
     }
 
     
@@ -765,6 +820,23 @@ public:
   }
 
   void DEBUG_dump_off_0() const
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   {
     std::ofstream f("debug0.off");
     f.precision(18);
