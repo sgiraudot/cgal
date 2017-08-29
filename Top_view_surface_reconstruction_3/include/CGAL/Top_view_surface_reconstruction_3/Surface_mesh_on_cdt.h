@@ -58,6 +58,7 @@ public:
   typedef typename CDT::Edge_circulator Edge_circulator;
   typedef typename CDT::Vertex_circulator Vertex_circulator;
   typedef typename CDT::Face_circulator Face_circulator;
+  typedef typename CDT::Line_face_circulator Line_face_circulator;
   typedef typename CDT::Locate_type Locate_type;
 
   typedef typename Mesh::template Property_map<Vertex_index, Vertex_handle> V2V_map; // Mesh vertex to CDT vertex
@@ -141,6 +142,11 @@ public:
   { return m_cdt.locate (point, hint); }
   typename GeomTraits::Triangle_2 triangle (Face_handle fh) const { return m_cdt.triangle(fh); }
 
+  Line_face_circulator line_walk (const Point_2& p, const Point_2& q, Face_handle f = Face_handle())
+  {
+    return m_cdt.line_walk(p,q,f);
+  }
+
   Vertex_handle infinite_vertex() { return m_cdt.infinite_vertex(); }
   Finite_faces_iterator finite_faces_begin() { return m_cdt.finite_faces_begin(); }
   Finite_faces_iterator finite_faces_end() { return m_cdt.finite_faces_end(); }
@@ -188,10 +194,13 @@ public:
   bool has_mesh_face (Face_handle fh) const { return (int(fh->info()) >= 0); }
   bool is_default (Face_handle fh) const { return (int(fh->info()) == -1); }
   void make_default (Face_handle fh) { fh->info() = Face_index(-1); }
-  bool is_buffer (Face_handle fh) const { return (int(fh->info()) == -2); }
+  bool is_buffer (Face_handle fh) const { return (int(fh->info()) == -2) || int(fh->info()) == -4; }
   void make_buffer (Face_handle fh) { fh->info() = Face_index(-2); }
   bool is_ignored (Face_handle fh) const { return (int(fh->info()) == -3); }
   void make_ignored (Face_handle fh) { fh->info() = Face_index(-3); }
+  bool is_unhandled_buffer (Face_handle fh) const { return (int(fh->info()) == -2); }
+  bool is_handled_buffer (Face_handle fh) const { return (int(fh->info()) == -4); }
+  void make_handled_buffer (Face_handle fh) { fh->info() = Face_index(-4); }
 
   int cw (int i) const { return m_cdt.cw(i); }
   int ccw (int i) const { return m_cdt.ccw(i); }
@@ -873,7 +882,7 @@ public:
     
     std::size_t nb_faces = 0;
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (!(has_mesh_face(it)))
+      if (is_handled_buffer(it))
         nb_faces ++;
 
     f << "OFF" << std::endl << m_cdt.number_of_vertices() << " " << nb_faces << " 0" << std::endl;
@@ -887,7 +896,7 @@ public:
     }
 
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (!(has_mesh_face(it)))
+      if (is_handled_buffer(it))
       {
         f << "3";
         for (std::size_t i = 0; i < 3; ++ i)
@@ -904,7 +913,7 @@ public:
     
     std::size_t nb_faces = 0;
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (is_ignored(it))
+      if (has_mesh_face(it))
         nb_faces ++;
 
     f << "OFF" << std::endl << m_cdt.number_of_vertices() << " " << nb_faces << " 0" << std::endl;
@@ -918,7 +927,7 @@ public:
     }
 
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (is_ignored(it))
+      if (has_mesh_face(it))
       {
         f << "3";
         for (std::size_t i = 0; i < 3; ++ i)
@@ -934,7 +943,8 @@ public:
     
     std::size_t nb_faces = 0;
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      nb_faces ++;
+      if(has_mesh_face(it))
+         nb_faces ++;
 
     f << "OFF" << std::endl << m_cdt.number_of_vertices() << " " << nb_faces << " 0" << std::endl;
 
@@ -948,10 +958,13 @@ public:
 
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
     {
-      f << "3";
-      for (std::size_t i = 0; i < 3; ++ i)
-        f << " " << map[it->vertex(i)] << std::endl;
-      f << std::endl;
+      if(has_mesh_face(it))
+      {
+        f << "3";
+        for (std::size_t i = 0; i < 3; ++ i)
+          f << " " << map[it->vertex(i)] << std::endl;
+        f << std::endl;
+      }
     }
   }
 

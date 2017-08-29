@@ -24,10 +24,14 @@ public:
  
   typedef typename Traits::vertex_descriptor     vertex_descriptor;
   typedef typename Traits::edge_descriptor       edge_descriptor;
+
+  typedef std::vector<vertex_descriptor> Polyline;
+  typedef typename std::vector<Polyline*>::iterator iterator;
+
   
 private:
 
-  std::vector<std::vector<vertex_descriptor>*> m_polylines;
+  std::vector<Polyline*> m_polylines;
   
 public:
 
@@ -43,6 +47,8 @@ public:
   std::size_t size() const { return m_polylines.size(); }
   std::vector<vertex_descriptor>& operator[] (const std::size_t& i) { return *(m_polylines[i]); }
   const std::vector<vertex_descriptor>& operator[] (const std::size_t& i) const { return *(m_polylines[i]); }
+  iterator begin() { return m_polylines.begin(); }
+  iterator end() { return m_polylines.end(); }
 
   void clear()
   {
@@ -51,7 +57,8 @@ public:
     m_polylines.clear();
   }
 
-  const Point_2& point (vertex_descriptor v) { return get (get(boost::vertex_point, *this), v); }
+  const Point_2& point (vertex_descriptor v) const { return get (get(boost::vertex_point, *this), v); }
+  Point_2& point (vertex_descriptor v) { return get (get(boost::vertex_point, *this), v); }
   
   void start_new_polyline()
   {

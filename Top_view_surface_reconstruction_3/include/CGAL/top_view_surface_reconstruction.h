@@ -12,6 +12,7 @@
 
 #include <CGAL/Top_view_surface_reconstruction_3/Surface_mesh_on_cdt.h>
 #include <CGAL/Top_view_surface_reconstruction_3/Border_graph.h>
+#include <CGAL/Top_view_surface_reconstruction_3/Line_detector.h>
 
 #include <CGAL/linear_least_squares_fitting_2.h>
 #include <CGAL/linear_least_squares_fitting_3.h>
@@ -612,16 +613,23 @@ namespace internal
     typedef Border_graph<GeomTraits> Graph;
 
     std::vector<std::vector<typename GeomTraits::Triangle_2> > all_facets (graph.size());
-    
+
+    std::vector<std::vector<typename GeomTraits::Line_2> > all_supports (graph.size());
+
+    TOP_VIEW_CERR << "  Simplification" << std::endl;
     for (std::size_t i = 0; i < graph.size(); ++ i)
     {
       std::vector<typename GeomTraits::Triangle_2>& facets
         = all_facets[i];
       
+      std::vector<typename GeomTraits::Line_2>& support
+        = all_supports[i];
+      
       typename SMCDT::Face_handle hint = typename SMCDT::Face_handle();
       for (std::size_t j = 0; j < graph[i].size(); ++ j)
       {
-        hint = mesh.locate (graph.point(graph[i][j]));
+        hint = mesh.locate (graph.point(graph[i][j]), hint);
+        mesh.make_handled_buffer (hint);
         facets.push_back (mesh.triangle (hint));
       }
 
@@ -692,7 +700,18 @@ namespace internal
       {
         new_polyline.push_back (graph[i][tokeep[j]]);
         if (j != tokeep.size() - 1)
+        {
           add_edge (graph[i][tokeep[j]], graph[i][tokeep[j+1]], graph);
+
+          // Compute support
+          typename GeomTraits::Line_2 line;
+          typename GeomTraits::Point_2 centroid;
+          CGAL::linear_least_squares_fitting_2 (facets.begin() + tokeep[j],
+                                                facets.begin() + tokeep[j+1],
+                                                line, centroid,
+                                                CGAL::Dimension_tag<2>());
+          support.push_back (line);
+        }
       }
 
       for (std::size_t j = 0; j < graph[i].size(); ++ j)
@@ -702,8 +721,6 @@ namespace internal
       graph[i].swap (new_polyline);
     }
 
-    // Regularize positions of vertices
-    
   }
 
   template <typename GeomTraits>
@@ -1311,6 +1328,7 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 //  typedef typename GeomTraits::Point_3 Point_3;
   typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
   typedef Border_graph<GeomTraits> Graph;
+  typedef Line_detector<GeomTraits> Detect;
 
   SMCDT tmp_mesh;
 
@@ -1328,8 +1346,6 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   Top_view_surface_reconstruction_3::internal::cleanup_buffer_zone<GeomTraits>
     (tmp_mesh);
 
-  tmp_mesh.DEBUG_dump_off_2();
-
   tmp_mesh.DEBUG_dump_off_3();
 
   Graph graph;
@@ -1344,10 +1360,23 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   tmp_mesh.DEBUG_dump_poly();
   graph.DEBUG_dump_poly("poly_complex.polylines.txt");
 
+  
   TOP_VIEW_CERR << "Simplifying border graph" << std::endl;
   Top_view_surface_reconstruction_3::internal::simplify_border_graph<GeomTraits>
     (tmp_mesh, graph, spacing * meshing_factor);
   graph.DEBUG_dump_poly("poly_simplified.polylines.txt");
+
+  TOP_VIEW_CERR << "Detecting lines in buffer" << std::endl;
+  Detect detect (tmp_mesh);
+
+  detect.sort_candidates_with_graph (graph);
+  detect.run (spacing /* * meshing_factor*/);
+
+  detect.DEBUG_dump_ply("buffer_lines.ply");
+  detect.DEBUG_dump_polyline("detected.polylines.txt");
+
+  tmp_mesh.DEBUG_dump_off_2();
+
 
   TOP_VIEW_CERR << "Creating mesh with borders" << std::endl;
   Top_view_surface_reconstruction_3::internal::create_mesh_with_borders<GeomTraits>
