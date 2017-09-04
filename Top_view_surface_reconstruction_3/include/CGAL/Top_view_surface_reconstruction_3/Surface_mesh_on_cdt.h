@@ -100,6 +100,9 @@ public:
     assert (okay);
   }
 
+  const Mesh& mesh() const { return m_mesh; }
+  const CDT& cdt() const { return m_cdt; }
+  
   Vertex_handle cdt_vertex (Vertex_index vi) const { return m_v2v_map[vi]; }
   Vertex_index mesh_vertex (Vertex_handle vh, std::size_t idx = 0) const { return vh->info()[idx].second; }
   bool has_mesh_vertex (Vertex_handle vh) const { return !vh->info().empty(); }

@@ -8,6 +8,8 @@
 
 #include <CGAL/linear_least_squares_fitting_2.h>
 
+#include <boost/iterator/iterator_facade.hpp>
+
 namespace CGAL
 {
 
@@ -170,6 +172,67 @@ public:
     }
   };
 
+  class iterator
+    : public boost::iterator_facade< iterator,
+                                     Point_2,
+                                     std::forward_iterator_tag >
+  {
+    typedef boost::iterator_facade< iterator,
+                                    Point_2,
+                                    std::forward_iterator_tag > Facade;
+  public:
+    iterator() : m_idx(0), m_detector(NULL) { }
+                 
+    iterator(Line_detector* detector, std::size_t idx)
+      : m_idx (idx), m_it (detector->m_lines[idx].buffer.begin()), m_detector (detector)
+    {
+      typename std::map<Face_handle, Point_2>::iterator found
+        = m_detector->m_endpoints.find(*m_it);
+      CGAL_assertion (found != m_detector->m_endpoints.end());
+      m_current = &(found->second);
+    }
+    iterator(Line_detector* detector, std::size_t idx, bool) // end
+      : m_idx (idx), m_it (detector->m_lines[idx].buffer.end()), m_detector (detector)
+    {
+    }
+  private:
+    
+    friend class boost::iterator_core_access;
+    void increment()
+    {
+      CGAL_assertion(m_detector != NULL);
+
+      ++ m_it;
+      
+      for (; m_it != m_detector->m_lines[m_idx].buffer.end(); ++ m_it)
+      {
+        typename std::map<Face_handle, Point_2>::iterator found
+          = m_detector->m_endpoints.find(*m_it);
+        if (found != m_detector->m_endpoints.end()
+            && *m_current != found->second)
+        {
+          m_current = &(found->second);
+          return;
+        }
+      }
+
+      return;
+    }
+  
+    bool equal(const iterator& other) const
+    {
+      return m_it == other.m_it;
+    }
+
+    Point_2& dereference() const { return const_cast<Point_2&>(*m_current); }
+
+    std::size_t m_idx;
+    typename std::deque<Face_handle>::iterator m_it;
+    Point_2* m_current;
+    Line_detector* m_detector;
+  };
+
+  friend iterator;
   
 private:
   
@@ -185,6 +248,10 @@ public:
   {
     init();
   }
+
+  std::size_t size() const { return m_lines.size(); }
+  iterator begin(std::size_t i) { return iterator(this, i); }
+  iterator end(std::size_t i) { return iterator(this, i, true); }
 
   Point_2& source (const Line& l) { return m_endpoints[l.buffer.front()]; }
   Point_2& target (const Line& l) { return m_endpoints[l.buffer.back()]; }
@@ -489,6 +556,10 @@ public:
     deg3_border_ls.precision(18);
     std::ofstream deg3_border_mid ("deg3_border_mid.xyz");
     deg3_border_mid.precision(18);
+    std::ofstream deg2_inside_proj ("deg2_inside_proj.xyz");
+    deg2_inside_proj.precision(18);
+    std::ofstream deg2_inside_mid ("deg2_inside_mid.xyz");
+    deg2_inside_mid.precision(18);
 
     std::set<Face_handle> done;
 
@@ -535,6 +606,53 @@ public:
                                       p1, std::sqrt (squared_length(l1)));
             done.insert (fh);
             deg2_border_mid << point << " 0" << std::endl;
+          }
+        }
+        else
+        {
+          Line& l0 = m_lines[incident_lines[0]];
+          Line& l1 = m_lines[incident_lines[1]];
+
+          Line* lfix = &l0;
+          Line* lvary = &l1;
+          if ((l0.buffer.front() == fh || l0.buffer.back() == fh))
+          {
+            lfix = &l1;
+            lvary = &l0;
+          }
+
+          // Try intersecting
+          typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Segment_2)>::type
+            result = CGAL::intersection(segment(*lfix), lvary->support);
+          Point_2* inter;
+          if (result && (inter = boost::get<Point_2>(&*result))
+              && CGAL::squared_distance (*inter, m_mesh.triangle (fh)) < epsilon * epsilon)
+          {
+            point = *inter;
+            done.insert (fh);
+            deg2_inside_proj << point << " 0" << std::endl;
+          }
+          // If not good, use closest point
+          else
+          {
+            Point_2 pvary = lvary->support.projection (m_mesh.midpoint (fh));
+            Point_2 proj = lfix->support.projection(pvary);
+
+            Vector_2 p2s (proj, source(*lfix));
+            Vector_2 p2t (proj, target(*lfix));
+
+            if (p2s * p2t < 0) // In segment
+              point = CGAL::barycenter (proj, std::sqrt (squared_length(*lfix)),
+                                        pvary, std::sqrt (squared_length(*lvary)));
+            else
+            {
+              point = target(*lfix);
+              if (CGAL::squared_distance (pvary, source (*lfix))
+                  < CGAL::squared_distance (pvary, target (*lfix)))
+                point = source(*lfix);
+            }
+            done.insert (fh);
+            deg2_inside_mid << point << " 0" << std::endl;
           }
         }
       }
@@ -587,95 +705,6 @@ public:
 
         }
       }
-    }
-
-    for (std::size_t i = 0; i < m_lines.size(); ++ i)
-      if (done.find(m_lines[i].buffer.front()) != done.end() &&
-          done.find(m_lines[i].buffer.back()) != done.end ())
-        m_lines[i].support = Line_2 (source(m_lines[i]), target(m_lines[i]));
-
-    std::ofstream deg2_inside_proj ("deg2_inside_proj.xyz");
-    deg2_inside_proj.precision(18);
-    std::ofstream deg2_inside_mid ("deg2_inside_mid.xyz");
-    deg2_inside_mid.precision(18);
-
-    for (typename std::map<Face_handle, Point_2>::iterator it = m_endpoints.begin();
-         it != m_endpoints.end(); ++ it)
-    {
-      Face_handle fh = it->first;
-      Point_2& point = it->second;
-
-      if (done.find(fh) != done.end())
-        continue;
-
-      std::vector<std::size_t>& incident_lines = m_map_f2l[fh];
-
-      if (incident_lines.size() == 2) // Intersection of two lines
-      {
-        Line& l0 = m_lines[incident_lines[0]];
-        Line& l1 = m_lines[incident_lines[1]];
-
-        Line* lfix = &l0;
-        Line* lvary = &l1;
-        if ((l0.buffer.front() == fh || l0.buffer.back() == fh))
-        {
-          lfix = &l1;
-          lvary = &l0;
-        }
-
-        // Try intersecting
-        typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Segment_2)>::type
-          result = CGAL::intersection(segment(*lfix), lvary->support);
-        Point_2* inter;
-        if (result && (inter = boost::get<Point_2>(&*result))
-            && CGAL::squared_distance (*inter, m_mesh.triangle (fh)) < epsilon * epsilon)
-        {
-          point = *inter;
-          done.insert (fh);
-          deg2_inside_proj << point << " 0" << std::endl;
-        }
-        // If not good, use closest point
-        else
-        {
-          Point_2 pvary = lvary->support.projection (m_mesh.midpoint (fh));
-          Point_2 proj = lfix->support.projection(pvary);
-
-          Vector_2 p2s (proj, source(*lfix));
-          Vector_2 p2t (proj, target(*lfix));
-
-          if (p2s * p2t < 0) // In segment
-            point = proj;
-          else
-          {
-            point = target(*lfix);
-            if (CGAL::squared_distance (pvary, source (*lfix))
-                < CGAL::squared_distance (pvary, target (*lfix)))
-              point = source(*lfix);
-          }
-          done.insert (fh);
-          deg2_inside_mid << point << " 0" << std::endl;
-        }
-        update_support (*lvary);
-      }
-    }
-  }
-
-  void update_support (Line& line)
-  {
-    line.support = Line_2 (source(line), target(line));        
-
-    for (typename std::deque<Face_handle>::iterator it = line.buffer.begin();
-         it != line.buffer.end(); ++ it)
-    {
-      if (*it == line.buffer.front() || *it == line.buffer.back())
-        continue;
-
-      typename std::map<Face_handle, Point_2>::iterator found
-        = m_endpoints.find (*it);
-      if (found == m_endpoints.end())
-        continue;
-
-      found->second = line.support.projection (found->second);
     }
 
   }
@@ -831,16 +860,24 @@ public:
     std::ofstream file (filename);
     file.precision(18);
 
-    for (std::size_t i = 0; i < m_lines.size(); ++ i)
-    {
-      if (project)
+    if (project)
+      for (std::size_t i = 0; i < m_lines.size(); ++ i)
         file << "2 " << m_lines[i].support.projection(source(m_lines[i])) << " 0 "
              << m_lines[i].support.projection(target(m_lines[i])) << " 0" << std::endl;
-      else
-        file << "2 " << source(m_lines[i]) << " 0 " << target(m_lines[i]) << " 0" << std::endl;
+    else
+    {
+      for (std::size_t i = 0; i < m_lines.size(); ++ i)
+      {
+        iterator previous = begin(i);
+        iterator it = previous;
+        ++ it;
+        for (; it != end(i); ++ it)
+        {
+          file << "2 " << *previous << " 0 " << *it << " 0" << std::endl;
+          previous = it;
+        }
+      }
     }
-    
-
   }
   
 };
