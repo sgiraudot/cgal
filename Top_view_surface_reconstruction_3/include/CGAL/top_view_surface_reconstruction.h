@@ -2,13 +2,19 @@
 #define CGAL_TOP_VIEW_SURFACE_RECONSTRUCTION_H
 
 //#define TOP_VIEW_FIX_DUPLICATE_VERTICES
+
 #define TOP_VIEW_DEBUG
+#define TOP_VIEW_LOG
+//#define TOP_VIEW_CHECK_STRUCTURE
 
 #ifdef TOP_VIEW_DEBUG
-#define TOP_VIEW_CERR std::cerr
+#define TOP_VIEW_SILENT false
 #else
-#define TOP_VIEW_CERR std::ostream(0)
+#define TOP_VIEW_SILENT true
 #endif
+
+#define TOP_VIEW_CERR \
+  if(TOP_VIEW_SILENT) {} else std::cerr
 
 #include <CGAL/Top_view_surface_reconstruction_3/Surface_mesh_on_cdt.h>
 #include <CGAL/Top_view_surface_reconstruction_3/Border_graph.h>
@@ -573,7 +579,6 @@ namespace internal
         }
       }
     }
-    std::cerr << "Okay" << std::endl;
   }
 
   template <typename GeomTraits>
@@ -1526,13 +1531,17 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   Top_view_surface_reconstruction_3::internal::filter_faces<GeomTraits>
     (tmp_mesh, spacing * threshold_factor);
 
+#ifdef TOP_VIEW_LOG
   tmp_mesh.DEBUG_dump_off_0();
+#endif
 
   TOP_VIEW_CERR << "Cleaning buffer zone" << std::endl;
   Top_view_surface_reconstruction_3::internal::cleanup_buffer_zone<GeomTraits>
     (tmp_mesh);
 
+#ifdef TOP_VIEW_LOG
   tmp_mesh.DEBUG_dump_off_3();
+#endif
 
   Graph graph;
 
@@ -1542,15 +1551,19 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   graph.filter_small_terminal_borders(10. * spacing * threshold_factor);
   graph.split_into_polylines();
-  
+
+#ifdef TOP_VIEW_LOG
   tmp_mesh.DEBUG_dump_poly();
   graph.DEBUG_dump_poly("poly_complex.polylines.txt");
-
+#endif
   
   TOP_VIEW_CERR << "Simplifying border graph" << std::endl;
   Top_view_surface_reconstruction_3::internal::simplify_border_graph<GeomTraits>
     (tmp_mesh, graph, spacing * threshold_factor);
+
+#ifdef TOP_VIEW_LOG
   graph.DEBUG_dump_poly("poly_simplified.polylines.txt");
+#endif
 
   TOP_VIEW_CERR << "Detecting lines in buffer" << std::endl;
   Detect detect (tmp_mesh);
@@ -1558,11 +1571,11 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   detect.sort_candidates_with_graph (graph);
   detect.run (spacing /* * meshing_factor*/);
 
+#ifdef TOP_VIEW_LOG
   detect.DEBUG_dump_ply("buffer_lines.ply");
   detect.DEBUG_dump_polyline("detected.polylines.txt");
-
   tmp_mesh.DEBUG_dump_off_2();
-
+#endif
 
   TOP_VIEW_CERR << "Creating mesh with borders" << std::endl;
   // Top_view_surface_reconstruction_3::internal::create_mesh_with_borders<GeomTraits>
@@ -1572,10 +1585,10 @@ void top_view_surface_reconstruction (PointInputIterator begin,
     (tmp_mesh, detect, output_mesh, spacing * meshing_factor,
      spacing * threshold_factor * meshing_factor);
 
-//  output_mesh.DEBUG_dump_off_0();
+#ifdef TOP_VIEW_LOG
   output_mesh.DEBUG_dump_off_4();
-
   output_mesh.DEBUG_dump_off_1();
+#endif
 
   output_mesh.check_structure_integrity();
   TOP_VIEW_CERR << "Generating missing 3D points" << std::endl;
@@ -1597,8 +1610,9 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 #endif
 
   output_mesh.check_structure_integrity();
-
+#ifdef TOP_VIEW_LOG
   output_mesh.DEBUG_dump_off_5();
+#endif
 
 }
 

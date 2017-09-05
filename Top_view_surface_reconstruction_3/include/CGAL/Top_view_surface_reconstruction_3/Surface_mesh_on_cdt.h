@@ -295,11 +295,11 @@ public:
     do
     {
       if (m_cdt.is_constrained(*circ))
-        ++ degree;
+        ++ out;
       ++ circ;
     }
     while (circ != start);
-    return degree;
+    return out;
   }
 
 
@@ -689,6 +689,7 @@ public:
 
   void check_structure_integrity()
   {
+#ifdef TOP_VIEW_CHECK_STRUCTURE
     static int nb = 0;
     ++ nb;
     std::cerr << "INTEGRITY CHECK " << nb << " BEGIN" << std::endl;
@@ -793,10 +794,8 @@ public:
           std::cerr << "  [Bad structure] Vertices of mesh face do not correpond to vertices of CDT face" << std::endl;
       }
     }
-
-    
-
     std::cerr << "INTEGRITY CHECK " << nb << " END" << std::endl;
+#endif
   }
 
   void DEBUG_dump_off_1() 

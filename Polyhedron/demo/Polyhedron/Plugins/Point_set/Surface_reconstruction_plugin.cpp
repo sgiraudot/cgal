@@ -41,6 +41,7 @@
 #include "ui_Surface_reconstruction_plugin.h"
 #include "CGAL/Kernel_traits.h"
 
+
 // Concurrency
 #ifdef CGAL_LINKED_WITH_TBB
 typedef CGAL::Parallel_tag Concurrency_tag;

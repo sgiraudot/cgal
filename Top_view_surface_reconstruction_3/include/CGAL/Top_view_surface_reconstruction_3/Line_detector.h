@@ -36,70 +36,6 @@ public:
   typedef typename SMCDT::Finite_faces_iterator Finite_faces_iterator;
   typedef typename SMCDT::Line_face_circulator Line_face_circulator;
 
-  struct Sort_by_planarity
-  {
-    Line_detector& detector;
-    double epsilon;
-
-    Sort_by_planarity (Line_detector& detector, double epsilon)
-      : detector (detector), epsilon (epsilon) { }
-
-    bool operator() (const Face_handle& a, const Face_handle& b) const
-    {
-      std::size_t deg_a = detector.degree(a);
-      std::size_t deg_b = detector.degree(b);
-
-      if (deg_a < 3 && deg_b == 3)
-        return true;
-      if (deg_a == 3 && deg_b < 3)
-        return false;
-      if (deg_a == 3 && deg_b == 3)
-        return a < b;
-         
-      double width_a = width(a);
-      double width_b = width(b);
-      if (width_a < epsilon && width_b > epsilon)
-        return true;
-      if (width_a > epsilon && width_b < epsilon)
-        return false;
-      if (width_a > epsilon && width_b > epsilon)
-        return width_a < width_b;
-
-      double dev_a, dev_b;
-      std::size_t nb_a, nb_b;
-      boost::tie (dev_a, nb_a) = deviation(a);
-      boost::tie (dev_b, nb_b) = deviation(b);
-      if (nb_a != nb_b)
-        return nb_a > nb_b;
-      
-      return dev_a < dev_b;
-    }
-
-    std::pair<std::size_t, double> deviation (const Face_handle& fh) const
-    {
-      std::vector<Triangle_2> support;
-      support.push_back (detector.m_mesh.triangle(fh));
-      for (std::size_t i = 0; i < 3; ++ i)
-        if (detector.m_mesh.is_handled_buffer(fh->neighbor(i)))
-        {
-          std::vector<Face_handle> neighbor;
-          detector.get_n_next_faces (fh->neighbor(i), fh, 5,
-                                     std::back_inserter (neighbor));
-          for (std::size_t n = 0; n < neighbor.size(); ++ n)
-            support.push_back (detector.m_mesh.triangle(neighbor[n]));
-        }
-      Line_2 line;
-      Point_2 centroid;
-      return std::make_pair (support.size(),
-                             CGAL::linear_least_squares_fitting_2 (support.begin(), support.end(),
-                                                                   line, centroid, CGAL::Dimension_tag<2>()));
-    }
-
-    
-  };
-
-  friend Sort_by_planarity;
-
   struct Sort_by_map
   {
     std::map<Face_handle, double>& scores;
@@ -132,19 +68,6 @@ public:
   {
     Line_2 support;
     std::deque<Face_handle> buffer;
-
-    bool is_valid() const
-    {
-      return (source.x() == source.x() &&
-              source.y() == source.y() &&
-              target.x() == target.x() &&
-              target.y() == target.y());
-    }
-
-    Segment_2 segment() const
-    {
-      return Segment_2 (source, target);
-    }
   };
 
   struct Face_to_grow_on
@@ -546,23 +469,6 @@ public:
 
   void regularize (double epsilon)
   {
-    std::ofstream deg1 ("deg1.xyz");
-    deg1.precision(18);
-    std::ofstream deg2_border_ls ("deg2_border_ls.xyz");
-    deg2_border_ls.precision(18);
-    std::ofstream deg2_border_mid ("deg2_border_mid.xyz");
-    deg2_border_mid.precision(18);
-    std::ofstream deg3_border_ls ("deg3_border_ls.xyz");
-    deg3_border_ls.precision(18);
-    std::ofstream deg3_border_mid ("deg3_border_mid.xyz");
-    deg3_border_mid.precision(18);
-    std::ofstream deg2_inside_proj ("deg2_inside_proj.xyz");
-    deg2_inside_proj.precision(18);
-    std::ofstream deg2_inside_mid ("deg2_inside_mid.xyz");
-    deg2_inside_mid.precision(18);
-
-    std::set<Face_handle> done;
-
     for (typename std::map<Face_handle, Point_2>::iterator it = m_endpoints.begin();
          it != m_endpoints.end(); ++ it)
     {
@@ -572,12 +478,7 @@ public:
       std::vector<std::size_t>& incident_lines = m_map_f2l[fh];
 
       if (incident_lines.size() == 1) // Simple case, just project
-      {
-        Line& line = m_lines[incident_lines[0]];
-        point = line.support.projection (point);
-        done.insert (fh);
-        deg1 << point << " 0" << std::endl;
-      }
+        point = regularized_point_degree_1 (point, m_lines[incident_lines[0]]);
       else if (incident_lines.size() == 2) // Intersection of two lines
       {
         Line& l0 = m_lines[incident_lines[0]];
@@ -586,33 +487,16 @@ public:
         if ((l0.buffer.front() == fh || l0.buffer.back() == fh) &&
             (l1.buffer.front() == fh || l1.buffer.back() == fh)) // Border to border case
         {
-          // Try intersecting
-          typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Line_2)>::type
-            result = CGAL::intersection(l0.support, l1.support);
-          Point_2* inter;
-          if (result && (inter = boost::get<Point_2>(&*result))
-              && CGAL::squared_distance (*inter, m_mesh.triangle (fh)) < epsilon * epsilon)
-          {
-            point = *inter;
-            done.insert (fh);
-            deg2_border_ls << point << " 0" << std::endl;
-          }
-          // If not good, use weighted midpoint
+          Point_2 candidate = regularized_point_degree_2_border_intersection (l0, l1);
+
+          if (candidate.x() != candidate.x() ||
+              CGAL::squared_distance (candidate, m_mesh.triangle (fh)) > epsilon * epsilon)
+            point = regularized_point_degree_2_border_barycenter (point, l0, l1);
           else
-          {
-            Point_2 p0 = l0.support.projection (point);
-            Point_2 p1 = l1.support.projection (point);
-            point = CGAL::barycenter (p0, std::sqrt (squared_length(l0)),
-                                      p1, std::sqrt (squared_length(l1)));
-            done.insert (fh);
-            deg2_border_mid << point << " 0" << std::endl;
-          }
+            point = candidate;
         }
         else
         {
-          Line& l0 = m_lines[incident_lines[0]];
-          Line& l1 = m_lines[incident_lines[1]];
-
           Line* lfix = &l0;
           Line* lvary = &l1;
           if ((l0.buffer.front() == fh || l0.buffer.back() == fh))
@@ -621,92 +505,229 @@ public:
             lvary = &l0;
           }
 
-          // Try intersecting
-          typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Segment_2)>::type
-            result = CGAL::intersection(segment(*lfix), lvary->support);
-          Point_2* inter;
-          if (result && (inter = boost::get<Point_2>(&*result))
-              && CGAL::squared_distance (*inter, m_mesh.triangle (fh)) < epsilon * epsilon)
-          {
-            point = *inter;
-            done.insert (fh);
-            deg2_inside_proj << point << " 0" << std::endl;
-          }
-          // If not good, use closest point
+          Point_2 candidate = regularized_point_degree_2_internal_intersection (*lfix, *lvary);
+
+          if (candidate.x() != candidate.x() ||
+              CGAL::squared_distance (candidate, m_mesh.triangle (fh)) > epsilon * epsilon)
+            point = regularized_point_degree_2_internal_barycenter (point, *lfix, *lvary);
           else
-          {
-            Point_2 pvary = lvary->support.projection (m_mesh.midpoint (fh));
-            Point_2 proj = lfix->support.projection(pvary);
-
-            Vector_2 p2s (proj, source(*lfix));
-            Vector_2 p2t (proj, target(*lfix));
-
-            if (p2s * p2t < 0) // In segment
-              point = CGAL::barycenter (proj, std::sqrt (squared_length(*lfix)),
-                                        pvary, std::sqrt (squared_length(*lvary)));
-            else
-            {
-              point = target(*lfix);
-              if (CGAL::squared_distance (pvary, source (*lfix))
-                  < CGAL::squared_distance (pvary, target (*lfix)))
-                point = source(*lfix);
-            }
-            done.insert (fh);
-            deg2_inside_mid << point << " 0" << std::endl;
-          }
+            point = candidate;
         }
       }
       else // Intersection of three lines
       {
-        bool border = true;
-        for (std::size_t i = 0; i < 3; ++ i)
-          if (m_lines[incident_lines[i]].buffer.front() != fh &&
-              m_lines[incident_lines[i]].buffer.back() != fh) // not border
-          {
-            border = false;
-            break;
-          }
+        Line& l0 = m_lines[incident_lines[0]];
+        Line& l1 = m_lines[incident_lines[1]];
+        Line& l2 = m_lines[incident_lines[2]];
+        
+        Point_2 candidate = regularized_point_degree_3_intersection (l0, l1, l2);
 
-        if (border)
-        {
-          Line& l0 = m_lines[incident_lines[0]];
-          Line& l1 = m_lines[incident_lines[1]];
-          Line& l2 = m_lines[incident_lines[2]];
-
-          CGAL::Eigen_matrix<double> mat(3, 2);
-          CGAL::Eigen_vector<double> vec(3);
-          mat.set(0,0, l0.support.a()); mat.set(0,1, l0.support.b()); vec.set(0, -l0.support.c());
-          mat.set(1,0, l1.support.a()); mat.set(1,1, l1.support.b()); vec.set(1, -l1.support.c());
-          mat.set(2,0, l2.support.a()); mat.set(2,1, l2.support.b()); vec.set(2, -l2.support.c());
-
-          CGAL::Eigen_svd::solve(mat, vec);
-
-          Point_2 candidate (vec(0), vec(1));
-
-          if (CGAL::squared_distance (point, m_mesh.triangle (fh)) < epsilon * epsilon)
-          {
-            point = candidate;
-            done.insert (fh);
-            deg3_border_ls << point << " 0" << std::endl;
-          }
-          // If not good, use weighted midpoint            
-          else
-          {
-            Point_2 p0 = l0.support.projection (point);
-            Point_2 p1 = l1.support.projection (point);
-            Point_2 p2 = l2.support.projection (point);
-
-            point = CGAL::barycenter (p0, std::sqrt (squared_length(l0)),
-                                      p1, std::sqrt (squared_length(l1)),
-                                      p2, std::sqrt (squared_length(l2)));
-            done.insert (fh);
-            deg3_border_mid << point << " 0" << std::endl;
-          }
-
-        }
+        if (candidate.x() != candidate.x() ||
+            CGAL::squared_distance (candidate, m_mesh.triangle (fh)) > epsilon * epsilon)
+          point = regularized_point_degree_3_barycenter (point, l0, l1, l2);
+        else
+          point = candidate;
       }
     }
 
+    // Check and repair self intersection of polyline
+    std::ofstream file("intersect.xyz");
+    file.precision(18);
+    for (std::size_t i = 0; i < m_lines.size(); ++ i)
+    {
+      Line& line = m_lines[i];
+      
+      Face_handle source = line.buffer.front();
+      for (std::size_t j = 1; j < line.buffer.size(); ++ j)
+      {
+        typename std::map<Face_handle, Point_2>::iterator found
+          = m_endpoints.find(line.buffer[j]);
+        if (found == m_endpoints.end())
+          continue;
+
+        Face_handle target = line.buffer[j];
+        if (target == source)
+          continue;
+ 
+        if (adjacent_lines_intersect (source, target)) // If intersecting, use barycenters (safer)
+        {
+          file << m_endpoints[source] << " 0" << std::endl
+               << m_endpoints[target] << " 0" << std::endl;
+
+          std::vector<std::size_t>& ilsource = m_map_f2l[source];
+          if (ilsource.size() == 2)
+            m_endpoints[source] = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(source),
+                                                                                m_lines[ilsource[0]],
+                                                                                m_lines[ilsource[1]]);
+          else if (ilsource.size() == 3)
+            m_endpoints[source] = regularized_point_degree_3_barycenter (m_mesh.midpoint(source),
+                                                                         m_lines[ilsource[0]],
+                                                                         m_lines[ilsource[1]],
+                                                                         m_lines[ilsource[2]]);
+          std::vector<std::size_t>& iltarget = m_map_f2l[target];
+          if (iltarget.size() == 2)
+            found->second = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(target),
+                                                                          m_lines[iltarget[0]],
+                                                                          m_lines[iltarget[1]]);
+          else if (iltarget.size() == 3)
+            found->second = regularized_point_degree_3_barycenter (m_mesh.midpoint(target),
+                                                                   m_lines[iltarget[0]],
+                                                                   m_lines[iltarget[1]],
+                                                                   m_lines[iltarget[2]]);
+          if (adjacent_lines_intersect (source, target)) // If still intersecting, go back to midpoint (guaranteed)
+          {
+            m_endpoints[source] = m_mesh.midpoint(source);
+            found->second = m_mesh.midpoint(target);
+          }
+        }
+        source = target;
+      }
+    }
+  }
+
+  Point_2 regularized_point_degree_1 (const Point_2& point, Line& line)
+  {
+    return line.support.projection (point);
+  }
+
+  Point_2 regularized_point_degree_2_border_intersection (Line& l0, Line& l1)
+  {
+    typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Line_2)>::type
+      result = CGAL::intersection(l0.support, l1.support);
+    Point_2* inter;
+    if (result && (inter = boost::get<Point_2>(&*result)))
+      return *inter;
+    return Point_2 (std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::quiet_NaN());
+  }
+
+  Point_2 regularized_point_degree_2_border_barycenter (const Point_2& point, Line& l0, Line& l1)
+  {
+    Point_2 p0 = l0.support.projection (point);
+    Point_2 p1 = l1.support.projection (point);
+    return CGAL::barycenter (p0, std::sqrt (squared_length(l0)),
+                             p1, std::sqrt (squared_length(l1)));
+  }
+
+  Point_2 regularized_point_degree_2_internal_intersection (Line& lfix, Line& lvary)
+  {
+    typename cpp11::result_of<typename Kernel::Intersect_3(Line_2, Segment_2)>::type
+      result = CGAL::intersection(segment(lfix), lvary.support);
+    Point_2* inter;
+    if (result && (inter = boost::get<Point_2>(&*result)))
+      return *inter;
+    return Point_2 (std::numeric_limits<double>::quiet_NaN(),
+                    std::numeric_limits<double>::quiet_NaN());
+  }
+
+  Point_2 regularized_point_degree_2_internal_barycenter (const Point_2& point, Line& lfix, Line& lvary)
+  {
+    Point_2 pvary = lvary.support.projection (point);
+    Point_2 proj = lfix.support.projection(pvary);
+
+    Vector_2 p2s (proj, source(lfix));
+    Vector_2 p2t (proj, target(lfix));
+
+    if (p2s * p2t < 0) // In segment
+      return CGAL::barycenter (proj, std::sqrt (squared_length(lfix)),
+                               pvary, std::sqrt (squared_length(lvary)));
+
+    if (CGAL::squared_distance (pvary, source (lfix))
+        < CGAL::squared_distance (pvary, target (lfix)))
+      return source(lfix);
+    else
+      return target(lfix);
+  }
+  
+  Point_2 regularized_point_degree_3_intersection (Line& l0, Line& l1, Line& l2)
+  {
+    CGAL::Eigen_matrix<double> mat(3, 2);
+    CGAL::Eigen_vector<double> vec(3);
+    mat.set(0,0, l0.support.a()); mat.set(0,1, l0.support.b()); vec.set(0, -l0.support.c());
+    mat.set(1,0, l1.support.a()); mat.set(1,1, l1.support.b()); vec.set(1, -l1.support.c());
+    mat.set(2,0, l2.support.a()); mat.set(2,1, l2.support.b()); vec.set(2, -l2.support.c());
+
+    CGAL::Eigen_svd::solve(mat, vec);
+
+    return Point_2 (vec(0), vec(1));
+  }
+
+  Point_2 regularized_point_degree_3_barycenter (const Point_2& point, Line& l0, Line& l1, Line& l2)
+  {
+    Point_2 p0 = l0.support.projection (point);
+    Point_2 p1 = l1.support.projection (point);
+    Point_2 p2 = l2.support.projection (point);
+
+    return CGAL::barycenter (p0, std::sqrt (squared_length(l0)),
+                             p1, std::sqrt (squared_length(l1)),
+                             p2, std::sqrt (squared_length(l2)));
+  }
+
+  bool adjacent_lines_intersect (Face_handle source, Face_handle target)
+  {
+    std::vector<std::size_t>& ilsource = m_map_f2l[source];
+    std::vector<std::size_t>& iltarget = m_map_f2l[target];
+    if (ilsource.size() < 2 || iltarget.size() < 2)
+      return false;
+
+    std::vector<Segment_2> segsource;
+    for (std::size_t i = 0; i < ilsource.size(); ++ i)
+      get_adjacent_segment (m_lines[ilsource[i]], source, std::back_inserter(segsource));
+    
+    std::vector<Segment_2> segtarget;
+    for (std::size_t i = 0; i < iltarget.size(); ++ i)
+      get_adjacent_segment (m_lines[iltarget[i]], target, std::back_inserter(segtarget));
+
+    for (std::size_t i = 0; i < segsource.size(); ++ i)
+      for (std::size_t j = 0; j < segtarget.size(); ++ j)
+        if (CGAL::do_intersect (segsource[i], segtarget[j]))
+        {
+          // Special case = loop, not considered intersection
+          if (segsource[i].source() == segtarget[j].source() ||
+              segsource[i].source() == segtarget[j].target() ||
+              segsource[i].target() == segtarget[j].source() ||
+              segsource[i].target() == segtarget[j].target())
+            continue;
+          
+          return true;
+        }
+    return false;
+  }
+
+  template <typename OutputIterator>
+  void get_adjacent_segment (Line& line, Face_handle fh, OutputIterator output)
+  {
+    std::queue<std::pair<std::size_t, bool> > todo;
+    if (fh == line.buffer.front())
+      todo.push (std::make_pair (0, true));
+    else if (fh == line.buffer.back())
+      todo.push (std::make_pair (line.buffer.size() - 1, false));
+    else
+      for (std::size_t i = 0; i < line.buffer.size(); ++ i)
+        if (fh == line.buffer[i])
+        {
+          todo.push (std::make_pair (i, true));
+          todo.push (std::make_pair (i, false));
+        }
+
+    while (!todo.empty())
+    {
+      std::size_t current = todo.front().first;
+      bool move_forward = todo.front().second;
+      todo.pop();
+
+      if (move_forward)
+        ++ current;
+      else
+        -- current;
+
+      typename std::map<Face_handle, Point_2>::iterator ep
+        = m_endpoints.find (line.buffer[current]);
+      if (ep != m_endpoints.end())
+        *(output ++) = Segment_2 (m_endpoints[fh], ep->second);
+      else
+        todo.push (std::make_pair (current, move_forward));
+    }
   }
   
   Vector_2 support_vector (Face_handle fh)
