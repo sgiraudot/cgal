@@ -109,10 +109,8 @@ public:
     iterator(Line_detector* detector, std::size_t idx)
       : m_idx (idx), m_it (detector->m_lines[idx].buffer.begin()), m_detector (detector)
     {
-      typename std::map<Face_handle, Point_2>::iterator found
-        = m_detector->m_endpoints.find(*m_it);
-      CGAL_assertion (found != m_detector->m_endpoints.end());
-      m_current = &(found->second);
+      m_current = &((*m_it)->info().endpoint);
+      CGAL_assertion ((*m_it)->info().has_endpoint());
     }
     iterator(Line_detector* detector, std::size_t idx, bool) // end
       : m_idx (idx), m_it (detector->m_lines[idx].buffer.end()), m_detector (detector)
@@ -129,12 +127,10 @@ public:
       
       for (; m_it != m_detector->m_lines[m_idx].buffer.end(); ++ m_it)
       {
-        typename std::map<Face_handle, Point_2>::iterator found
-          = m_detector->m_endpoints.find(*m_it);
-        if (found != m_detector->m_endpoints.end()
-            && *m_current != found->second)
+        if ((*m_it)->info().has_endpoint()
+            && (*m_it)->info().endpoint != *m_current)
         {
-          m_current = &(found->second);
+          m_current = &((*m_it)->info().endpoint);
           return;
         }
       }
@@ -162,8 +158,6 @@ private:
   SMCDT& m_mesh;
   std::vector<Face_handle> m_buffer;
   std::vector<Line> m_lines;
-  std::map<Face_handle, std::vector<std::size_t> > m_map_f2l;
-  std::map<Face_handle, Point_2> m_endpoints;
   
 public:
 
@@ -176,8 +170,8 @@ public:
   iterator begin(std::size_t i) { return iterator(this, i); }
   iterator end(std::size_t i) { return iterator(this, i, true); }
 
-  Point_2& source (const Line& l) { return m_endpoints[l.buffer.front()]; }
-  Point_2& target (const Line& l) { return m_endpoints[l.buffer.back()]; }
+  Point_2& source (const Line& l) { return l.buffer.front()->info().endpoint; }
+  Point_2& target (const Line& l) { return l.buffer.back()->info().endpoint; }
   Segment_2 segment (const Line& l) { return Segment_2 (source(l), target(l)); }
   double squared_length (const Line& l)
   {
@@ -242,9 +236,6 @@ public:
 
     // Lines
     m_lines.clear();
-    m_map_f2l.clear();
-    for (std::size_t n = 0; n < m_buffer.size(); ++ n)
-      m_map_f2l.insert (std::make_pair (m_buffer[n], std::vector<std::size_t>()));
 
     // region growing on buffer faces
     for (std::size_t n = 0; n < m_buffer.size(); ++ n)
@@ -258,11 +249,12 @@ public:
       if (line.buffer.size() < 10)
         continue;
 
-      m_endpoints[line.buffer.front()] = m_mesh.midpoint(line.buffer.front());
-      m_endpoints[line.buffer.back()] = m_mesh.midpoint(line.buffer.back());
+      line.buffer.front()->info().endpoint = m_mesh.midpoint(line.buffer.front());
+      line.buffer.back()->info().endpoint = m_mesh.midpoint(line.buffer.back());
 
       for (std::size_t i = 0; i < line.buffer.size(); ++ i)
-        m_map_f2l[line.buffer[i]].push_back (m_lines.size());
+        line.buffer[i]->info().incident_lines.push_back (m_lines.size());
+
       m_lines.push_back (line);
       
     }
@@ -282,11 +274,12 @@ public:
       if (line.buffer.size() < 2)
         continue;
 
-      m_endpoints[line.buffer.front()] = m_mesh.midpoint(line.buffer.front());
-      m_endpoints[line.buffer.back()] = m_mesh.midpoint(line.buffer.back());
+      line.buffer.front()->info().endpoint = m_mesh.midpoint(line.buffer.front());
+      line.buffer.back()->info().endpoint = m_mesh.midpoint(line.buffer.back());
 
       for (std::size_t i = 0; i < line.buffer.size(); ++ i)
-        m_map_f2l[line.buffer[i]].push_back (m_lines.size());
+        line.buffer[i]->info().incident_lines.push_back (m_lines.size());
+      
       m_lines.push_back (line);
       
     }
@@ -417,13 +410,17 @@ public:
   void fix_connections()
   {
     std::vector<Face_handle> to_add;
-    typename std::map<Face_handle, Point_2>::iterator it = m_endpoints.begin();
-    while (it != m_endpoints.end())
+
+    for (std::size_t n = 0; n < m_buffer.size();)
     {
-      typename std::map<Face_handle, Point_2>::iterator current = it ++;
-      
-      Face_handle fh = current->first;
-      std::vector<std::size_t>& incident_lines = m_map_f2l[fh];
+      if (!m_buffer[n]->info().has_endpoint())
+      {
+        ++ n;
+        continue;
+      }
+
+      Face_handle fh = m_buffer[n ++];
+      std::vector<std::size_t>& incident_lines = fh->info().incident_lines;
 
       if (incident_lines.size() == 1) // Find if incident to another line
       {
@@ -432,7 +429,7 @@ public:
         for (std::size_t i = 0; i < 3; ++ i)
           if (m_mesh.is_handled_buffer (fh->neighbor(i)))
           {
-            std::vector<std::size_t>& il2 = m_map_f2l[fh->neighbor(i)];
+            std::vector<std::size_t>& il2 = fh->neighbor(i)->info().incident_lines;
             bool okay = true;
             for (std::size_t j = 0; j < il2.size(); ++ j)
               if (il2[j] == incident_lines[0])
@@ -443,7 +440,6 @@ public:
             if (!okay)
               continue;
 
-//            m_endpoints[fh->neighbor(i)] = m_mesh.midpoint (fh->neighbor(i));
             to_add.push_back (fh->neighbor(i));
 
             if (line.buffer.front() == fh)
@@ -452,7 +448,7 @@ public:
               line.buffer.push_back(fh->neighbor(i));
             il2.push_back(incident_lines[0]);
 
-            m_endpoints.erase (current);
+            fh->info().erase_endpoint();
             break;
           }
       }
@@ -462,20 +458,22 @@ public:
     conn.precision(18);
     for (std::size_t i = 0; i < to_add.size(); ++ i)
     {
-      m_endpoints[to_add[i]] = m_mesh.midpoint (to_add[i]);
+      to_add[i]->info().endpoint = m_mesh.midpoint (to_add[i]);
       conn << m_mesh.midpoint(to_add[i]) << " 0" << std::endl;
     }
   }
 
   void regularize (double epsilon)
   {
-    for (typename std::map<Face_handle, Point_2>::iterator it = m_endpoints.begin();
-         it != m_endpoints.end(); ++ it)
+    for (std::size_t n = 0; n < m_buffer.size(); ++ n)
     {
-      Face_handle fh = it->first;
-      Point_2& point = it->second;
+      if (!m_buffer[n]->info().has_endpoint())
+        continue;
+
+      Face_handle fh = m_buffer[n];
+      Point_2& point = fh->info().endpoint;
       
-      std::vector<std::size_t>& incident_lines = m_map_f2l[fh];
+      std::vector<std::size_t>& incident_lines = fh->info().incident_lines;
 
       if (incident_lines.size() == 1) // Simple case, just project
         point = regularized_point_degree_1 (point, m_lines[incident_lines[0]]);
@@ -540,9 +538,7 @@ public:
       Face_handle source = line.buffer.front();
       for (std::size_t j = 1; j < line.buffer.size(); ++ j)
       {
-        typename std::map<Face_handle, Point_2>::iterator found
-          = m_endpoints.find(line.buffer[j]);
-        if (found == m_endpoints.end())
+        if (!line.buffer[j]->info().has_endpoint())
           continue;
 
         Face_handle target = line.buffer[j];
@@ -551,33 +547,33 @@ public:
  
         if (adjacent_lines_intersect (source, target)) // If intersecting, use barycenters (safer)
         {
-          file << m_endpoints[source] << " 0" << std::endl
-               << m_endpoints[target] << " 0" << std::endl;
+          file << source->info().endpoint << " 0" << std::endl
+               << target->info().endpoint << " 0" << std::endl;
 
-          std::vector<std::size_t>& ilsource = m_map_f2l[source];
+          std::vector<std::size_t>& ilsource = source->info().incident_lines;
           if (ilsource.size() == 2)
-            m_endpoints[source] = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(source),
-                                                                                m_lines[ilsource[0]],
-                                                                                m_lines[ilsource[1]]);
+            source->info().endpoint = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(source),
+                                                                                    m_lines[ilsource[0]],
+                                                                                    m_lines[ilsource[1]]);
           else if (ilsource.size() == 3)
-            m_endpoints[source] = regularized_point_degree_3_barycenter (m_mesh.midpoint(source),
-                                                                         m_lines[ilsource[0]],
-                                                                         m_lines[ilsource[1]],
-                                                                         m_lines[ilsource[2]]);
-          std::vector<std::size_t>& iltarget = m_map_f2l[target];
+            source->info().endpoint = regularized_point_degree_3_barycenter (m_mesh.midpoint(source),
+                                                                             m_lines[ilsource[0]],
+                                                                             m_lines[ilsource[1]],
+                                                                             m_lines[ilsource[2]]);
+          std::vector<std::size_t>& iltarget = target->info().incident_lines;
           if (iltarget.size() == 2)
-            found->second = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(target),
-                                                                          m_lines[iltarget[0]],
-                                                                          m_lines[iltarget[1]]);
+            target->info().endpoint = regularized_point_degree_2_border_barycenter (m_mesh.midpoint(target),
+                                                                                    m_lines[iltarget[0]],
+                                                                                    m_lines[iltarget[1]]);
           else if (iltarget.size() == 3)
-            found->second = regularized_point_degree_3_barycenter (m_mesh.midpoint(target),
-                                                                   m_lines[iltarget[0]],
-                                                                   m_lines[iltarget[1]],
-                                                                   m_lines[iltarget[2]]);
+            target->info().endpoint = regularized_point_degree_3_barycenter (m_mesh.midpoint(target),
+                                                                             m_lines[iltarget[0]],
+                                                                             m_lines[iltarget[1]],
+                                                                             m_lines[iltarget[2]]);
           if (adjacent_lines_intersect (source, target)) // If still intersecting, go back to midpoint (guaranteed)
           {
-            m_endpoints[source] = m_mesh.midpoint(source);
-            found->second = m_mesh.midpoint(target);
+            source->info().endpoint = m_mesh.midpoint(source);
+            target->info().endpoint = m_mesh.midpoint(target);
           }
         }
         source = target;
@@ -665,8 +661,8 @@ public:
 
   bool adjacent_lines_intersect (Face_handle source, Face_handle target)
   {
-    std::vector<std::size_t>& ilsource = m_map_f2l[source];
-    std::vector<std::size_t>& iltarget = m_map_f2l[target];
+    std::vector<std::size_t>& ilsource = source->info().incident_lines;
+    std::vector<std::size_t>& iltarget = target->info().incident_lines;
     if (ilsource.size() < 2 || iltarget.size() < 2)
       return false;
 
@@ -721,10 +717,8 @@ public:
       else
         -- current;
 
-      typename std::map<Face_handle, Point_2>::iterator ep
-        = m_endpoints.find (line.buffer[current]);
-      if (ep != m_endpoints.end())
-        *(output ++) = Segment_2 (m_endpoints[fh], ep->second);
+      if (line.buffer[current]->info().has_endpoint())
+        *(output ++) = Segment_2 (fh->info().endpoint, line.buffer[current]->info().endpoint);
       else
         todo.push (std::make_pair (current, move_forward));
     }
@@ -786,16 +780,16 @@ public:
   
   bool face_available (Face_handle fh)
   {
-    return m_map_f2l[fh].empty();
+    return fh->info().incident_lines.empty();
   }
 
   bool face_available (Face_handle fh, Face_handle previous)
   {
-    const std::vector<std::size_t>& list_fh = m_map_f2l[fh];
+    const std::vector<std::size_t>& list_fh = fh->info().incident_lines;
     if (list_fh.empty())
       return true;
     
-    const std::vector<std::size_t>& list_prev = m_map_f2l[previous];
+    const std::vector<std::size_t>& list_prev = previous->info().incident_lines;
 
     for (std::size_t i = 0; i < list_fh.size(); ++ i)
       for (std::size_t j = 0; j < list_prev.size(); ++ j)
@@ -859,14 +853,14 @@ public:
         f << " " << 3*n + i;
 
       int red = 0, green = 0, blue = 0;
-      if (m_map_f2l[m_buffer[n]].size() == 1)
+      if (m_buffer[n]->info().incident_lines.size() == 1)
       {
-        srand(m_map_f2l[m_buffer[n]][0]);
+        srand(m_buffer[n]->info().incident_lines[0]);
         red = 64 + rand() % 128;
         green = 64 + rand() % 128;
         blue = 64 + rand() % 128;
       }
-      else if (m_map_f2l[m_buffer[n]].size() > 1)
+      else if (m_buffer[n]->info().incident_lines.size() > 1)
       {
         red = 128; green = 128; blue = 128;
       }

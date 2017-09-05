@@ -3,8 +3,8 @@
 
 //#define TOP_VIEW_FIX_DUPLICATE_VERTICES
 
-#define TOP_VIEW_DEBUG
-#define TOP_VIEW_LOG
+//#define TOP_VIEW_DEBUG
+//#define TOP_VIEW_LOG
 //#define TOP_VIEW_CHECK_STRUCTURE
 
 #ifdef TOP_VIEW_DEBUG
@@ -154,7 +154,7 @@ namespace internal
         if (mesh.has_at_least_one_mesh_vertex (current))
           okay = true;
 
-        current->info() = typename SMCDT::Face_index(0); // Make non-default
+        current->info().index = typename SMCDT::Face_index(0); // Make non-default
         polygons.back().push_back (current);
 
         for (std::size_t i = 0; i < 3; ++ i)
@@ -490,7 +490,7 @@ namespace internal
         if (!mesh.is_default(current))
           continue;
         
-        current->info() = typename SMCDT::Face_index(0);
+        current->info().index = typename SMCDT::Face_index(0);
 
         done.push_back (current);
         for (std::size_t i = 0; i < 3; ++ i)
@@ -1019,6 +1019,15 @@ namespace internal
       }
     
   }
+
+  template <typename GeomTraits>
+  void region_growing (Surface_mesh_on_cdt<GeomTraits>& mesh,
+                       double epsilon, double cluster_epsilon)
+  {
+
+
+  }
+
   
   template <typename GeomTraits>
   void generate_missing_3d_points (Surface_mesh_on_cdt<GeomTraits>& mesh,
@@ -1590,6 +1599,10 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   output_mesh.DEBUG_dump_off_1();
 #endif
 
+  TOP_VIEW_CERR << "Detecting planar regions" << std::endl;
+  Top_view_surface_reconstruction_3::internal::region_growing<GeomTraits>
+    (output_mesh, spacing, spacing * meshing_factor);
+  
   output_mesh.check_structure_integrity();
   TOP_VIEW_CERR << "Generating missing 3D points" << std::endl;
   Top_view_surface_reconstruction_3::internal::generate_missing_3d_points<GeomTraits>

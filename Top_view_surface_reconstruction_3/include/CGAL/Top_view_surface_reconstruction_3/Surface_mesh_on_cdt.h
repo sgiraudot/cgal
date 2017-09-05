@@ -42,8 +42,24 @@ public:
   typedef typename Mesh::Face_index Face_index;
   typedef typename Mesh::Halfedge_index Halfedge_index;
 
+  struct Face_info
+  {
+    Face_index index;
+    Point_2 endpoint;
+    std::vector<std::size_t> incident_lines;
+    Face_info()
+      : index()
+      , endpoint (std::numeric_limits<double>::quiet_NaN(),
+                  std::numeric_limits<double>::quiet_NaN())
+    { }
+
+    bool has_endpoint() const { return (endpoint.x() == endpoint.x()); }
+    void erase_endpoint() { endpoint = Point_2(std::numeric_limits<double>::quiet_NaN(),
+                                               std::numeric_limits<double>::quiet_NaN()); }
+  };
+
   typedef Triangulation_vertex_base_with_info_2<std::vector<std::pair<Direction_2, Vertex_index> >, Kernel>  Vbwi;
-  typedef Triangulation_face_base_with_info_2<Face_index, Kernel> Fbwi;
+  typedef Triangulation_face_base_with_info_2<Face_info, Kernel> Fbwi;
   typedef Constrained_triangulation_face_base_2<Kernel, Fbwi> Cfbwi;
   typedef Triangulation_data_structure_2<Vbwi, Cfbwi> TDS;
   typedef Exact_predicates_tag Itag;
@@ -139,7 +155,7 @@ public:
 
 
   Face_handle cdt_face (Face_index fi) const { return m_f2f_map[fi]; }
-  Face_index mesh_face (Face_handle fh) const { return fh->info(); }
+  Face_index mesh_face (Face_handle fh) const { return fh->info().index; }
 
   Face_handle locate (const Point_2& point, Face_handle hint = Face_handle()) const
   { return m_cdt.locate (point, hint); }
@@ -194,16 +210,16 @@ public:
     return false;
   }
   
-  bool has_mesh_face (Face_handle fh) const { return (int(fh->info()) >= 0); }
-  bool is_default (Face_handle fh) const { return (int(fh->info()) == -1); }
-  void make_default (Face_handle fh) { fh->info() = Face_index(-1); }
-  bool is_buffer (Face_handle fh) const { return (int(fh->info()) == -2) || int(fh->info()) == -4; }
-  void make_buffer (Face_handle fh) { fh->info() = Face_index(-2); }
-  bool is_ignored (Face_handle fh) const { return (int(fh->info()) == -3); }
-  void make_ignored (Face_handle fh) { fh->info() = Face_index(-3); }
-  bool is_unhandled_buffer (Face_handle fh) const { return (int(fh->info()) == -2); }
-  bool is_handled_buffer (Face_handle fh) const { return (int(fh->info()) == -4); }
-  void make_handled_buffer (Face_handle fh) { fh->info() = Face_index(-4); }
+  bool has_mesh_face (Face_handle fh) const { return (int(fh->info().index) >= 0); }
+  bool is_default (Face_handle fh) const { return (int(fh->info().index) == -1); }
+  void make_default (Face_handle fh) { fh->info().index = Face_index(-1); }
+  bool is_buffer (Face_handle fh) const { return (int(fh->info().index) == -2) || int(fh->info().index) == -4; }
+  void make_buffer (Face_handle fh) { fh->info().index = Face_index(-2); }
+  bool is_ignored (Face_handle fh) const { return (int(fh->info().index) == -3); }
+  void make_ignored (Face_handle fh) { fh->info().index = Face_index(-3); }
+  bool is_unhandled_buffer (Face_handle fh) const { return (int(fh->info().index) == -2); }
+  bool is_handled_buffer (Face_handle fh) const { return (int(fh->info().index) == -4); }
+  void make_handled_buffer (Face_handle fh) { fh->info().index = Face_index(-4); }
 
   int cw (int i) const { return m_cdt.cw(i); }
   int ccw (int i) const { return m_cdt.ccw(i); }
@@ -309,7 +325,7 @@ public:
     Face_index fi = m_mesh.add_face (fh->vertex(0)->info()[0].second,
                                      fh->vertex(1)->info()[0].second,
                                      fh->vertex(2)->info()[0].second);
-    fh->info() = fi;
+    fh->info().index = fi;
     m_f2f_map[fi] = fh;
   }
 
@@ -318,7 +334,7 @@ public:
     Face_index fi = m_mesh.add_face (a, b, c);
     if (fi != Face_index())
     {
-      fh->info() = fi;
+      fh->info().index = fi;
       m_f2f_map[fi] = fh;
     }
     else
@@ -759,7 +775,7 @@ public:
         continue;
       }
 
-      if (m_f2f_map[fh->info()] != fh)
+      if (m_f2f_map[fh->info().index] != fh)
         std::cerr << "  [Bad structure] Mesh face not connected to correct CDT face" << std::endl;
     }
            
@@ -769,7 +785,7 @@ public:
       if (fh == Face_handle())
         continue;
 
-      if (fh->info() != fi)
+      if (fh->info().index != fi)
         std::cerr << "  [Bad structure] CDT face not connected to correct mesh face" << std::endl;
 
       BOOST_FOREACH (Vertex_index vi, vertices_around_face (halfedge (fi, m_mesh), m_mesh))
