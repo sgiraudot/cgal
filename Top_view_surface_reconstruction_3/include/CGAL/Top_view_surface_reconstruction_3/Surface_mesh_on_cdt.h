@@ -9,6 +9,7 @@
 #include <CGAL/Constrained_triangulation_plus_2.h>
 
 #include <CGAL/Polygon_mesh_processing/stitch_borders.h>
+#include <CGAL/Polygon_mesh_processing/compute_normal.h>
 
 #include <CGAL/linear_least_squares_fitting_3.h>
 
@@ -41,21 +42,28 @@ public:
   typedef typename Mesh::Vertex_index Vertex_index;
   typedef typename Mesh::Face_index Face_index;
   typedef typename Mesh::Halfedge_index Halfedge_index;
+  typedef typename Mesh::Edge_index Edge_index;
 
   struct Face_info
   {
     Face_index index;
     Point_2 endpoint;
     std::vector<std::size_t> incident_lines;
+    std::size_t plane_index;
+    
     Face_info()
       : index()
       , endpoint (std::numeric_limits<double>::quiet_NaN(),
                   std::numeric_limits<double>::quiet_NaN())
+      , plane_index (std::size_t(-1))
     { }
 
     bool has_endpoint() const { return (endpoint.x() == endpoint.x()); }
     void erase_endpoint() { endpoint = Point_2(std::numeric_limits<double>::quiet_NaN(),
                                                std::numeric_limits<double>::quiet_NaN()); }
+
+    bool has_plane() const { return plane_index != std::size_t(-1); }
+    void erase_plane() { plane_index = std::size_t(-1); }
   };
 
   typedef Triangulation_vertex_base_with_info_2<std::vector<std::pair<Direction_2, Vertex_index> >, Kernel>  Vbwi;
@@ -81,6 +89,51 @@ public:
   typedef typename Mesh::template Property_map<Vertex_index, Vertex_index> NVN_map; // Mesh vertex to next vertical mesh vertex
   typedef typename Mesh::template Property_map<Face_index, Face_handle> F2F_map; // Mesh face to CDT face
 
+  struct Sort_faces_by_planarity
+  {
+    Self* mesh;
+
+    Sort_faces_by_planarity (Self* mesh) : mesh (mesh) { }
+
+    bool operator() (const Face_handle& a, const Face_handle& b) const
+    {
+      double dev_a = deviation_from_plane (a);
+      double dev_b = deviation_from_plane (b);
+      if (dev_a == dev_b)
+        return a < b;
+      return deviation_from_plane (a) < deviation_from_plane (b);
+    }
+
+    double deviation_from_plane (const Face_handle& fh) const
+    {
+      Vector_3 normal_seed = mesh->normal_vector (fh);
+      Point_3 pt_seed = mesh->midpoint_3(fh);
+      Plane_3 optimal_plane (pt_seed, normal_seed);
+
+      double max = 0.;
+      std::size_t nb_neigh = 0;
+      
+      for (std::size_t i = 0; i < 3; ++ i)
+      {
+        Face_handle fn = fh->neighbor(i);
+        if (mesh->has_mesh_face(fn))
+        {
+          nb_neigh ++;
+          Point_3 point = mesh->point (fn->vertex(fn->index(fh)));
+          double dist = CGAL::squared_distance (point, optimal_plane);
+          if (dist > max)
+            max = dist;
+        }
+      }
+
+      if (nb_neigh == 0)
+        return std::numeric_limits<double>::max();
+      return max * (4 - nb_neigh);
+    }
+
+  };
+    
+
 private:
 
   struct Vertex_handle_to_point : public std::unary_function<Vertex_handle, Point_3>
@@ -102,6 +155,7 @@ private:
   V2V_map m_v2v_map;
   NVN_map m_nvv_map;
   F2F_map m_f2f_map;
+  std::vector<Plane_3> m_planes;
 
 public:
 
@@ -118,6 +172,7 @@ public:
 
   const Mesh& mesh() const { return m_mesh; }
   const CDT& cdt() const { return m_cdt; }
+  std::vector<Plane_3>& planes() { return m_planes; }
   
   Vertex_handle cdt_vertex (Vertex_index vi) const { return m_v2v_map[vi]; }
   Vertex_index mesh_vertex (Vertex_handle vh, std::size_t idx = 0) const { return vh->info()[idx].second; }
@@ -160,6 +215,17 @@ public:
   Face_handle locate (const Point_2& point, Face_handle hint = Face_handle()) const
   { return m_cdt.locate (point, hint); }
   typename GeomTraits::Triangle_2 triangle (Face_handle fh) const { return m_cdt.triangle(fh); }
+
+  typename GeomTraits::Triangle_3 triangle_3 (Face_handle fh)
+  {
+    CGAL_assertion (has_unique_mesh_vertex(fh->vertex(0))
+                    && has_unique_mesh_vertex(fh->vertex(1))
+                    && has_unique_mesh_vertex(fh->vertex(2)));
+
+    return typename GeomTraits::Triangle_3 (point(fh->vertex(0)),
+                                            point (fh->vertex(1)),
+                                            point (fh->vertex(2)));
+  }
 
   Line_face_circulator line_walk (const Point_2& p, const Point_2& q, Face_handle f = Face_handle())
   {
@@ -210,6 +276,14 @@ public:
     return false;
   }
   
+  bool has_three_mesh_vertices (Face_handle f) const
+  {
+    for (std::size_t i = 0; i < 3; ++ i)
+      if (!has_mesh_vertex (f->vertex(i)))
+        return false;
+    return true;
+  }
+  
   bool has_mesh_face (Face_handle fh) const { return (int(fh->info().index) >= 0); }
   bool is_default (Face_handle fh) const { return (int(fh->info().index) == -1); }
   void make_default (Face_handle fh) { fh->info().index = Face_index(-1); }
@@ -229,6 +303,19 @@ public:
   const Point_3& point (Vertex_handle vh, std::size_t idx = 0) const { return m_mesh.point(mesh_vertex(vh, idx)); }
   Point_3& point (Vertex_handle vh, std::size_t idx = 0) { return m_mesh.point(mesh_vertex(vh, idx)); }
 
+  Vector_3 normal_vector (Face_handle fh) const
+  {
+    CGAL_assertion (has_unique_mesh_vertex(fh->vertex(0))
+                    && has_unique_mesh_vertex(fh->vertex(1))
+                    && has_unique_mesh_vertex(fh->vertex(2)));
+
+    Vector_3 out = CGAL::orthogonal_vector (point (fh->vertex(0)),
+                                            point (fh->vertex(1)),
+                                            point (fh->vertex(2)));
+    out = out / std::sqrt (out*out);
+    return out;
+  }
+  
   Vertex_handle insert (const Point_2& point)
   {
     return m_cdt.insert (point);
@@ -441,7 +528,18 @@ public:
                                                  vh->info()[(i+1)%(vh->info().size())].first))
         return i;
 
-    std::cerr << "Warning section" << std::endl;
+    // std::ofstream f1("section.polylines.txt", std::ios_base::app);
+    // f1.precision(18);
+    
+    // for (std::size_t i = 0; i < vh->info().size(); ++ i)
+    //   f1 << "2 " << vh->point() << " 0 "
+    //      << (vh->point() + vh->info()[i].first.to_vector()) << " 0 " << std::endl;
+    
+    // std::ofstream file("section.xyz", std::ios_base::app);
+    // file.precision(18);
+    // file << point << " 0" << std::endl;
+    // std::cerr << "Warning section" << std::endl;
+    // exit(0);
     return 0;
   }
 
@@ -485,7 +583,22 @@ public:
       ((f->vertex(0)->point().x() + f->vertex(1)->point().x() + f->vertex(2)->point().x()) / 3.,
        (f->vertex(0)->point().y() + f->vertex(1)->point().y() + f->vertex(2)->point().y()) / 3.);
   }
-  
+
+  Point_3 midpoint_3 (Face_handle fh)
+  {
+    CGAL_assertion (has_unique_mesh_vertex(fh->vertex(0))
+                    && has_unique_mesh_vertex(fh->vertex(1))
+                    && has_unique_mesh_vertex(fh->vertex(2)));
+
+    Point_3 p0 = point(fh->vertex(0));
+    Point_3 p1 = point(fh->vertex(1));
+    Point_3 p2 = point(fh->vertex(2));
+
+    return Point_3 ((p0.x() + p1.x() + p2.x()) / 3.,
+                    (p0.y() + p1.y() + p2.y()) / 3.,
+                    (p0.z() + p1.z() + p2.z()) / 3.);
+  }
+
 
   void get_neighborhood (Vertex_handle vh, double epsilon,
                          std::vector<std::vector<Point_3> >& neighborhood,
@@ -586,8 +699,11 @@ public:
     {
       if (has_defined_height(vh->info()[i].second))
         continue;
-          
+
+      Point_3 new_point = m_mesh.point(vh->info()[i].second);
+
       std::vector<Point_3>& neighborhood = small_neighborhood[i];
+
 
       // If no neighbors, give up for now
       if (neighborhood.empty())
@@ -599,6 +715,7 @@ public:
                       std::numeric_limits<double>::quiet_NaN());
       
       double dist_min = std::numeric_limits<double>::max();
+
       for (std::size_t j = 0; j < neighborhood.size(); ++ j)
       {
         double dist = CGAL::squared_distance (vh->point(), Point_2(neighborhood[j].x(),
@@ -610,8 +727,6 @@ public:
         }
       }
       dist_min = std::sqrt (dist_min);
-
-      Point_3 new_point = m_mesh.point(vh->info()[i].second);
 
       double ref_z = closest.z();
 
@@ -626,6 +741,56 @@ public:
       m_mesh.point(vh->info()[i].second) = new_point;
     }
 
+  }
+
+  void estimate_missing_heights_from_planes (Vertex_handle vh)
+  {
+    std::vector<std::vector<std::size_t> > incident_planes (vh->info().size());
+    
+    Face_circulator circ = m_cdt.incident_faces (vh), start = circ;
+    do
+    {
+      if (!is_ignored(circ))
+      {
+        Point_2 p = midpoint(circ);
+        std::size_t i = find_section_of_point_from_vertex_view (vh, p);
+        incident_planes[i].push_back (circ->info().plane_index);
+      }
+      ++ circ;
+    }
+    while (circ != start);
+
+    for (std::size_t i = 0; i < incident_planes.size(); ++ i)
+    {
+//      CGAL_assertion (!incident_planes[i].empty());
+      
+      double z = 0.;
+      for (std::size_t j = 0; j < incident_planes[i].size(); ++ j)
+      {
+        double d = estimate_height_with_plane(vh, incident_planes[i][j]);
+        CGAL_assertion (d != std::numeric_limits<double>::max());
+        z += d;
+      }
+      z /= incident_planes[i].size();
+
+      Point_3 new_point = m_mesh.point(vh->info()[i].second);
+      m_mesh.point(vh->info()[i].second) = Point_3 (new_point.x(), new_point.y(), z);
+    }
+  }
+      
+  double estimate_height_with_plane (Vertex_handle vh, std::size_t plane_index)
+  {
+    const Plane_3& plane = m_planes[plane_index];
+    Line_3 line (Point_3 (vh->point().x(), vh->point().y(), 0.),
+                 Vector_3 (0., 0., 1.));
+
+    typename CGAL::cpp11::result_of<typename Kernel::Intersect_3(Line_3, Plane_3)>::type
+      result = CGAL::intersection(line, plane);
+    Point_3* inter;
+    if (result && (inter = boost::get<Point_3>(&*result)))
+      return inter->z();
+    
+    return std::numeric_limits<double>::max();
   }
 
   void estimate_missing_heights_no_limit (Vertex_handle vh)
@@ -986,6 +1151,112 @@ public:
     }
   }
 
+  void DEBUG_dump_ply_1() const
+  {
+    std::ofstream f("debug1.ply");
+    f.precision(18);
+    
+    std::size_t nb_faces = 0;
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
+      if(has_mesh_face(it))
+         nb_faces ++;
+
+    std::size_t nb_vertices = 0;
+    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin(); it != m_cdt.finite_vertices_end(); ++ it)
+      if (has_unique_mesh_vertex(it))
+        ++ nb_vertices;
+    
+    f << "ply" << std::endl
+      << "format ascii 1.0" << std::endl
+      << "element vertex " << nb_vertices << std::endl
+      << "property double x" << std::endl
+      << "property double y" << std::endl
+      << "property double z" << std::endl
+      << "element face " << nb_faces << std::endl
+      << "property list uchar int vertex_indices" << std::endl
+      << "property uchar red" << std::endl
+      << "property uchar green" << std::endl
+      << "property uchar blue" << std::endl
+      << "end_header" << std::endl;
+
+    std::map<Vertex_handle, std::size_t> map;
+    std::size_t idx = 0;
+    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin(); it != m_cdt.finite_vertices_end(); ++ it)
+      if (has_unique_mesh_vertex(it))
+      {
+        f << point(it) << std::endl;
+        map[it] = idx ++;
+      }
+
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
+      if(has_mesh_face(it))
+      {
+        int red = 0, green = 0, blue = 0;
+        if (it->info().has_plane())
+        {
+          srand(it->info().plane_index);
+          red = 64 + rand() % 128;
+          green = 64 + rand() % 128;
+          blue = 64 + rand() % 128;
+        }
+        
+        f << "3";
+        for (std::size_t i = 0; i < 3; ++ i)
+          f << " " << map[it->vertex(i)];
+        f << " " << red << " " << green << " " << blue << std::endl;
+      }
+  }
+
+  void DEBUG_dump_ply_2() const
+  {
+    std::ofstream f("debug2.ply");
+    f.precision(18);
+    
+    std::size_t nb_faces = 0;
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
+      if(!is_ignored(it))
+         nb_faces ++;
+
+    f << "ply" << std::endl
+      << "format ascii 1.0" << std::endl
+      << "element vertex " << m_cdt.number_of_vertices() << std::endl
+      << "property double x" << std::endl
+      << "property double y" << std::endl
+      << "property double z" << std::endl
+      << "element face " << nb_faces << std::endl
+      << "property list uchar int vertex_indices" << std::endl
+      << "property uchar red" << std::endl
+      << "property uchar green" << std::endl
+      << "property uchar blue" << std::endl
+      << "end_header" << std::endl;
+
+    std::map<Vertex_handle, std::size_t> map;
+    std::size_t idx = 0;
+    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin(); it != m_cdt.finite_vertices_end(); ++ it)
+    {
+      f << it->point() << " 0" << std::endl;
+      map[it] = idx ++;
+    }
+    
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
+      if(!is_ignored(it))
+      {
+        int red = 0, green = 0, blue = 0;
+        if (it->info().has_plane())
+        {
+          srand(it->info().plane_index);
+          red = 64 + rand() % 128;
+          green = 64 + rand() % 128;
+          blue = 64 + rand() % 128;
+        }
+        
+        f << "3";
+        for (std::size_t i = 0; i < 3; ++ i)
+          f << " " << map[it->vertex(i)];
+        f << " " << red << " " << green << " " << blue << std::endl;
+      }
+  }
+
   void DEBUG_dump_poly()
   {
     std::ofstream f("debug_constraints.polylines.txt");
@@ -998,6 +1269,42 @@ public:
           << it->first->vertex ((it->second + 2)%3)->point() << " 0" << std::endl;
    }
 
+  void DEBUG_dump_edges()
+  {
+    std::ofstream f("edges.polylines.txt");
+    f.precision(18);
+    
+    Vector_3 vertical (0., 0., 1.);
+
+    BOOST_FOREACH (Edge_index ei, m_mesh.edges())
+    {
+      Vertex_index v0 = m_mesh.vertex(ei, 0);
+      Vertex_index v1 = m_mesh.vertex(ei, 1);
+      const Point_3& p0 = point(v0);
+      const Point_3& p1 = point(v1);
+
+      bool is_edge = false;
+      if (m_mesh.is_border(ei))
+        is_edge = true;
+      else
+      {
+        Face_index f0 = m_mesh.face (m_mesh.halfedge(ei, 0));
+        Face_index f1 = m_mesh.face (m_mesh.halfedge(ei, 1));
+
+        Vector_3 n0 = CGAL::Polygon_mesh_processing::compute_face_normal (f0, m_mesh);
+        Vector_3 n1 = CGAL::Polygon_mesh_processing::compute_face_normal (f1, m_mesh);
+        
+        if (p0.x() == p1.x() && p0.y() == p1.y() &&
+            CGAL::abs(n0 * n1) < 0.9999)
+          is_edge = true;
+        else if ((n0 * vertical == 0.) != (n1 * vertical == 0.))
+            is_edge = true;
+      }
+
+      if (is_edge)
+        f << "2 " << p0 << " " << p1 << std::endl;
+    }
+  }
 };
 
 

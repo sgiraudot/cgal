@@ -507,13 +507,31 @@ public:
 
           if (candidate.x() != candidate.x() ||
               CGAL::squared_distance (candidate, m_mesh.triangle (fh)) > epsilon * epsilon)
-            point = regularized_point_degree_2_internal_barycenter (point, *lfix, *lvary);
+          {
+            candidate = regularized_point_degree_2_internal_barycenter (point, *lfix, *lvary);
+            if (candidate == source(*lfix) || candidate == target(*lfix))
+            {
+              Face_handle fh = lfix->buffer.front();
+              if (candidate == target(*lfix))
+                fh = lfix->buffer.back();
+
+              if (fh->info().incident_lines.size() < 3)
+              {
+                fh->info().incident_lines.push_back ((lfix == &l0) ? incident_lines[0] : incident_lines[1]);
+                point = candidate;
+              }
+            }
+            else
+              point = candidate;
+          }
           else
             point = candidate;
         }
       }
       else // Intersection of three lines
       {
+        CGAL_assertion (incident_lines.size() == 3);
+        
         Line& l0 = m_lines[incident_lines[0]];
         Line& l1 = m_lines[incident_lines[1]];
         Line& l2 = m_lines[incident_lines[2]];
@@ -543,7 +561,10 @@ public:
 
         Face_handle target = line.buffer[j];
         if (target == source)
+        {
+          file << source->info().endpoint << " 0" << std::endl;
           continue;
+        }
  
         if (adjacent_lines_intersect (source, target)) // If intersecting, use barycenters (safer)
         {
