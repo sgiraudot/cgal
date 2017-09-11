@@ -647,9 +647,9 @@ namespace internal
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
     typedef Border_graph<GeomTraits> Graph;
     
-    typedef std::map<typename SMCDT::Face_handle, typename Graph::vertex_descriptor> Map_v2v;
+    typedef std::map<typename SMCDT::Face_handle, typename Graph::vertex_descriptor> Map_f2v;
     
-    Map_v2v map_v2v;
+    Map_f2v map_f2v;
 
     for (typename SMCDT::Finite_edges_iterator it = mesh.finite_edges_begin();
          it != mesh.finite_edges_end(); ++ it)
@@ -660,16 +660,16 @@ namespace internal
 
       if (mesh.is_buffer(it->first) && mesh.is_buffer(it->first->neighbor(it->second)))
       {
-        typename Map_v2v::iterator map0, map1;
+        typename Map_f2v::iterator map0, map1;
         bool inserted = false;
-        boost::tie (map0, inserted) = map_v2v.insert (std::make_pair (it->first, typename Graph::vertex_descriptor()));
+        boost::tie (map0, inserted) = map_f2v.insert (std::make_pair (it->first, typename Graph::vertex_descriptor()));
         if (inserted)
         {
           typename GeomTraits::Point_2 p0 = mesh.midpoint (it->first);
           map0->second = boost::add_vertex(p0, graph);
         }
 
-        boost::tie (map1, inserted) = map_v2v.insert (std::make_pair (it->first->neighbor(it->second),
+        boost::tie (map1, inserted) = map_f2v.insert (std::make_pair (it->first->neighbor(it->second),
                                                                       typename Graph::vertex_descriptor()));
         if (inserted)
         {
@@ -680,6 +680,7 @@ namespace internal
         boost::add_edge (map0->second, map1->second, graph);
       }
     }
+    
   }
 
   template <typename GeomTraits>
@@ -849,6 +850,41 @@ namespace internal
         previous_map = current_map;
       }
     }
+
+    // Insert ridges in CDT and map
+    // for (std::size_t i = 0; i < ridges.size(); ++ i)
+    // {
+    //   const typename GeomTraits::Point_3& source = ridges[i].source();
+    //   const typename GeomTraits::Point_3& target = ridges[i].target();
+    //   typename GeomTraits::Vector_3 vec (source, target);
+
+    //   if (source == target)
+    //     continue;
+      
+    //   std::size_t nb_pts = std::max(std::size_t(1), std::size_t(std::sqrt(vec*vec) / epsilon));
+
+    //   typename SMCDT::Vertex_handle previous_cdt = output.insert (source);
+    //   typename SMCDT::Vertex_handle previous_map = map.insert (typename GeomTraits::Point_2(source.x(), source.y()));
+      
+    //   typename SMCDT::Vertex_handle current_cdt = previous_cdt;
+
+    //   for (std::size_t k = 1; k <= nb_pts; ++ k)
+    //   {
+    //     typename GeomTraits::Point_3 point
+    //       = output.point(previous_cdt) + (k / double(nb_pts)) * vec;
+        
+    //     if (k == nb_pts)
+    //       point = target;
+          
+    //     typename SMCDT::Vertex_handle next_cdt = output.insert (point);
+    //     output.insert_constraint (current_cdt, next_cdt);
+    //     current_cdt = next_cdt;
+    //   }
+    //   previous_cdt = current_cdt;
+    //   typename SMCDT::Vertex_handle current_map = map.insert (typename GeomTraits::Point_2(target.x(), target.y()));
+    //   map.insert_constraint (previous_map, current_map);
+    //   previous_map = current_map;
+    // }
 
     // Insert vertices not too close to borders
     typename SMCDT::Face_handle located = typename SMCDT::Face_handle();
@@ -1056,10 +1092,12 @@ namespace internal
       
       //characteristics of the seed
       typename GeomTraits::Vector_3 normal_seed = mesh.normal_vector (faces[fi]);
+      if (nb_min == 1)
+        normal_seed = typename GeomTraits::Vector_3(0., 0., 1.);
       
       typename GeomTraits::Point_3 pt_seed = mesh.midpoint_3(faces[fi]);
       typename GeomTraits::Plane_3 optimal_plane (pt_seed, normal_seed);
-              
+
       //initialization containers
       std::vector<typename SMCDT::Face_handle> index_container (1, faces[fi]);
       std::vector<typename SMCDT::Face_handle> index_container_former_ring (1, faces[fi]);
@@ -1115,9 +1153,10 @@ namespace internal
         }
         index_container_current_ring.clear();
 
-        CGAL::linear_least_squares_fitting_3 (support.begin(), support.end(),
-                                              optimal_plane,
-                                              CGAL::Dimension_tag<2>());
+        if (nb_min != 1)
+          CGAL::linear_least_squares_fitting_3 (support.begin(), support.end(),
+                                                optimal_plane,
+                                                CGAL::Dimension_tag<2>());
 
       } while (propagation);
 
@@ -1133,6 +1172,7 @@ namespace internal
       else
         planes.push_back (optimal_plane);
     }
+
     TOP_VIEW_CERR << planes.size() << " planes detected ("
                   << nb_failed_trials << " failed trials)" << std::endl;
   }
@@ -1148,6 +1188,61 @@ namespace internal
     region_growing_fill_voids<GeomTraits> (mesh);
     region_growing_one_pass<GeomTraits> (mesh, std::numeric_limits<double>::max(), 1, 0.);
     region_growing_fill_voids_on_meshless_faces<GeomTraits> (mesh);
+  }
+
+  template <typename GeomTraits>
+  void project_points_on_detected_planes (Surface_mesh_on_cdt<GeomTraits>& mesh,
+                                          double epsilon)
+  {
+    typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
+
+    for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
+         it != mesh.finite_vertices_end(); ++ it)
+    {
+      if (!mesh.has_unique_mesh_vertex(it))
+        continue;
+      typename SMCDT::Vertex_index vi = mesh.mesh_vertex(it);
+
+      std::set<std::size_t> incident_planes;
+      typename SMCDT::Line_3 line (mesh.point(vi), typename GeomTraits::Vector_3 (0., 0., 1.));
+
+      typename SMCDT::Face_circulator circ = mesh.incident_faces(it), start = circ;
+      do
+      {
+        if (circ->info().has_plane())
+          incident_planes.insert (circ->info().plane_index);
+        ++ circ;
+      }
+      while (circ != start);
+
+      typename GeomTraits::Point_3 point
+        = mesh.barycenter_of_projections_on_planes (it, incident_planes);
+      
+      if (incident_planes.size() > 2)
+      {
+        typename GeomTraits::Point_3 candidate = mesh.least_squares_plane_intersection (incident_planes);
+        if (CGAL::squared_distance (typename GeomTraits::Point_2 (point.x(), point.y()),
+                                    typename GeomTraits::Point_2 (candidate.x(), candidate.y()))
+            < epsilon * epsilon)
+          point = candidate;
+      }
+      else if (incident_planes.size() == 2)
+      {
+        typename std::set<std::size_t>::iterator sit = incident_planes.begin();
+        ++ sit;
+        typename GeomTraits::Line_3 line;
+        if (mesh.intersection_line_of_2_planes (*(incident_planes.begin()), *sit, line))
+        {
+          typename GeomTraits::Point_3 candidate = line.projection (point);
+          if (CGAL::squared_distance (typename GeomTraits::Point_2 (point.x(), point.y()),
+                                      typename GeomTraits::Point_2 (candidate.x(), candidate.y()))
+              < epsilon * epsilon)
+            point = candidate;
+        }
+      }
+      mesh.point(vi) = point;
+    }
+
   }
 
   template <typename GeomTraits>
@@ -1199,8 +1294,7 @@ namespace internal
   }
                          
   template <typename GeomTraits>
-  void generate_missing_3d_points_from_planes (Surface_mesh_on_cdt<GeomTraits>& mesh,
-                                               double epsilon)
+  void generate_missing_3d_points_from_planes (Surface_mesh_on_cdt<GeomTraits>& mesh)
   {
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
 
@@ -1779,10 +1873,6 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   Top_view_surface_reconstruction_3::internal::cleanup_buffer_zone<GeomTraits>
     (tmp_mesh);
 
-#ifdef TOP_VIEW_LOG
-  tmp_mesh.DEBUG_dump_off_3();
-#endif
-
   Graph graph;
 
   TOP_VIEW_CERR << "Building border graph" << std::endl;
@@ -1791,6 +1881,7 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   graph.filter_small_terminal_borders(10. * parameters.epsilon * threshold_factor);
   graph.split_into_polylines();
+
 
 #ifdef TOP_VIEW_LOG
   tmp_mesh.DEBUG_dump_poly();
@@ -1803,6 +1894,10 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
 #ifdef TOP_VIEW_LOG
   graph.DEBUG_dump_poly("poly_simplified.polylines.txt");
+#endif
+
+#ifdef TOP_VIEW_LOG
+  tmp_mesh.DEBUG_dump_ply_3();
 #endif
 
   TOP_VIEW_CERR << "Detecting lines in buffer" << std::endl;
@@ -1837,14 +1932,17 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 #ifdef TOP_VIEW_LOG
     output_mesh.DEBUG_dump_ply_1();
     output_mesh.DEBUG_dump_ply_2();
+    output_mesh.DEBUG_dump_planes_inter();
 #endif
+
   }
 
+  
   if (parameters.flatten_planar_regions)
   {
     TOP_VIEW_CERR << "Flattening planar regions" << std::endl;
     Top_view_surface_reconstruction_3::internal::project_points_on_detected_planes<GeomTraits>
-      (output_mesh);
+      (output_mesh, parameters.epsilon);
   }
 
   output_mesh.check_structure_integrity();
@@ -1888,7 +1986,7 @@ void top_view_surface_reconstruction (PointInputIterator begin,
   TOP_VIEW_CERR << "Generating missing 3D points" << std::endl;
   if (parameters.estimate_borders_from_planes)
     Top_view_surface_reconstruction_3::internal::generate_missing_3d_points_from_planes<GeomTraits>
-      (output_mesh, parameters.epsilon * meshing_factor);
+      (output_mesh);
   else
     Top_view_surface_reconstruction_3::internal::generate_missing_3d_points<GeomTraits>
       (output_mesh, parameters.epsilon * meshing_factor);
