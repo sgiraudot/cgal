@@ -214,6 +214,9 @@ public:
 
   Face_handle locate (const Point_2& point, Face_handle hint = Face_handle()) const
   { return m_cdt.locate (point, hint); }
+
+  Edge mirror_edge (const Edge& edge) const { return m_cdt.mirror_edge(edge); }
+  
   typename GeomTraits::Triangle_2 triangle (Face_handle fh) const { return m_cdt.triangle(fh); }
 
   typename GeomTraits::Triangle_3 triangle_3 (Face_handle fh)
@@ -227,6 +230,11 @@ public:
                                             point (fh->vertex(2)));
   }
 
+  bool is_edge (Vertex_handle va, Vertex_handle vb, Face_handle& fh, int& fi)
+  {
+    return m_cdt.is_edge (va, vb, fh, fi);
+  }
+  
   Line_face_circulator line_walk (const Point_2& p, const Point_2& q, Face_handle f = Face_handle())
   {
     return m_cdt.line_walk(p,q,f);
@@ -868,6 +876,105 @@ public:
     }
   }
 
+  bool intersection_line_of_2_planes (std::size_t a, std::size_t b, Line_3& line)
+  {
+    const Plane_3& p0 = m_planes[a];
+    const Plane_3& p1 = m_planes[b];
+      
+    typename cpp11::result_of<typename Kernel::Intersect_3(Plane_3, Plane_3)>::type
+      result = CGAL::intersection(p0, p1);
+      
+    Line_3* inter;
+    if (result && (inter = boost::get<Line_3>(&*result)))
+    {
+      line = *inter;
+      return true;
+    }
+
+    return false;
+  }
+
+  template <typename PlaneIndexRange>
+  Point_3 barycenter_of_projections_on_planes (Vertex_handle vh, const PlaneIndexRange& planes)
+  {
+    Point_3 out (vh->point().x(), vh->point().y(), 0.);
+    std::size_t nb = 0;
+    
+    Line_3 line (out, typename GeomTraits::Vector_3 (0., 0., 1.));
+    
+    BOOST_FOREACH (std::size_t idx, planes)
+    {
+      Plane_3& plane = m_planes[idx];
+      typename CGAL::cpp11::result_of<typename GeomTraits::Intersect_3
+                                      (Line_3,
+                                       Plane_3)>::type
+        result = CGAL::intersection(line, plane);
+      typename GeomTraits::Point_3* inter;
+      if (result && (inter = boost::get<typename GeomTraits::Point_3>(&*result)))
+      {
+        out = CGAL::barycenter (*inter, 1, out, nb);
+        ++ nb;
+      }
+      else
+        CGAL_assertion(false);
+    }
+
+    return out;
+  }
+  
+  template <typename PlaneIndexRange>
+  Point_3 least_squares_plane_intersection (const PlaneIndexRange& incident_planes)
+  {
+    CGAL::Eigen_matrix<double> mat(incident_planes.size(), 3);
+    CGAL::Eigen_vector<double> vec(incident_planes.size());
+
+    std::size_t idx = 0;
+    BOOST_FOREACH (std::size_t plane_index, incident_planes)
+    {
+      const Plane_3& plane = m_planes[plane_index];
+      mat.set(idx,0, plane.a()); mat.set(idx,1, plane.b()); mat.set(idx,2, plane.c());
+      vec.set(idx, -plane.d());
+      ++ idx;
+    }
+
+    CGAL::Eigen_svd::solve(mat, vec);
+
+    return Point_3 (vec(0), vec(1), vec(2));
+  }
+
+  Point_3 barycenter_plane_intersection (Vertex_handle vh,
+                                         const std::vector<std::size_t>& incident_planes)
+  {
+    Point_3 point (vh->point().x(), vh->point().y(), 0.);
+    std::size_t idx = 0;
+    Line_3 line (point, Vector_3(0., 0., 1.));
+    
+    BOOST_FOREACH (std::size_t plane_index, incident_planes)
+    {
+      const Plane_3& plane = m_mesh.planes()[plane_index];
+      
+      typename cpp11::result_of<typename Kernel::Intersect_3(Line_3, Plane_3)>::type
+        result = CGAL::intersection(line, plane);
+      
+      Point_3* inter;
+      if (result && (inter = boost::get<Point_3>(&*result)))
+      {
+        point = CGAL::barycenter (*inter, 1, point, idx);
+        std::cerr << point << std::endl;
+      }
+      else
+        CGAL_assertion (false);
+
+      ++ idx;
+    }
+
+    CGAL_assertion (point.x() == point.x());
+
+    return point;
+  }
+
+  
+
   void check_structure_integrity()
   {
 #ifdef TOP_VIEW_CHECK_STRUCTURE
@@ -1012,23 +1119,6 @@ public:
   }
 
   void DEBUG_dump_off_0() const
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   {
     std::ofstream f("debug0.off");
     f.precision(18);
@@ -1089,17 +1179,23 @@ public:
   }
 
 
-  void DEBUG_dump_off_3() const
+  void DEBUG_dump_ply_3() const
   {
-    std::ofstream f("debug3.off");
+    std::ofstream f("debug3.ply");
     f.precision(18);
     
-    std::size_t nb_faces = 0;
-    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (has_mesh_face(it))
-        nb_faces ++;
-
-    f << "OFF" << std::endl << m_cdt.number_of_vertices() << " " << nb_faces << " 0" << std::endl;
+    f << "ply" << std::endl
+      << "format ascii 1.0" << std::endl
+      << "element vertex " << m_cdt.number_of_vertices() << std::endl
+      << "property double x" << std::endl
+      << "property double y" << std::endl
+      << "property double z" << std::endl
+      << "element face " << m_cdt.number_of_faces() << std::endl
+      << "property list uchar int vertex_indices" << std::endl
+      << "property uchar red" << std::endl
+      << "property uchar green" << std::endl
+      << "property uchar blue" << std::endl
+      << "end_header" << std::endl;
 
     std::map<Vertex_handle, std::size_t> map;
     std::size_t idx = 0;
@@ -1110,13 +1206,17 @@ public:
     }
 
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (has_mesh_face(it))
-      {
-        f << "3";
-        for (std::size_t i = 0; i < 3; ++ i)
-          f << " " << map[it->vertex(i)] << std::endl;
-        f << std::endl;
-      }
+    {
+      int red = 128, green = 128, blue = 128;
+      if (is_ignored(it)) { red = 0; green = 0; blue = 0; }
+      else if (is_handled_buffer(it)) { red = 230; green = 0; blue = 0; }
+      else if (is_buffer(it)) { red = 0; green = 0; blue = 230; }
+        
+      f << "3";
+      for (std::size_t i = 0; i < 3; ++ i)
+        f << " " << map[it->vertex(i)];
+      f << " " << red << " " << green << " " << blue << std::endl;
+    }
   }
 
   void DEBUG_dump_off_4() const
@@ -1304,6 +1404,79 @@ public:
       if (is_edge)
         f << "2 " << p0 << " " << p1 << std::endl;
     }
+  }
+
+  void DEBUG_dump_planes_inter()
+  {
+    std::ofstream f("edges_inter.polylines.txt");
+    f.precision(18);
+
+    typedef std::map<std::pair<std::size_t, std::size_t>, std::vector<Edge> > Intermap;
+
+    Intermap intermap;
+
+    for (Finite_edges_iterator it = m_cdt.finite_edges_begin ();
+         it != m_cdt.finite_edges_end(); ++ it)
+    {
+      Face_handle f0 = it->first;
+      Face_handle f1 = it->first->neighbor (it->second);
+
+      if (!f0->info().has_plane() || !f1->info().has_plane() ||
+          is_ignored (f0) || is_ignored (f1))
+        continue;
+
+      std::size_t p0 = f0->info().plane_index;
+      std::size_t p1 = f1->info().plane_index;
+      if (p0 == p1)
+        continue;
+      if (p1 > p0)
+        std::swap (p0, p1);
+
+      typename Intermap::iterator found = intermap.insert(std::make_pair (std::make_pair(p0,p1),
+                                                                          std::vector<Edge>())).first;
+      found->second.push_back (*it);
+    }
+
+    std::cerr << intermap.size() << " intersection(s) found" << std::endl;
+
+    for (typename Intermap::iterator it = intermap.begin(); it != intermap.end(); ++ it)
+    {
+      const Plane_3& p0 = m_planes[it->first.first];
+      const Plane_3& p1 = m_planes[it->first.second];
+
+      typename CGAL::cpp11::result_of<typename Kernel::Intersect_3(Plane_3, Plane_3)>::type
+        result = CGAL::intersection(p0, p1);
+      Line_3* inter;
+      if (result && (inter = boost::get<Line_3>(&*result)))
+      {
+        Point_3 orig = inter->point();
+        Vector_3 vec = inter->to_vector();
+        vec /= std::sqrt (vec*vec);
+
+        double min = std::numeric_limits<double>::max();
+        double max = -std::numeric_limits<double>::max();
+        
+        for (std::size_t i = 0; i < it->second.size(); ++ i)
+        {
+          for (std::size_t j = 1; j <= 2; ++ j)
+          {
+            Vertex_handle v = it->second[i].first->vertex ((it->second[i].second + j)%3);
+            if (has_unique_mesh_vertex(v))
+            {
+              const Point_3& pt = point(v);
+              double val = (inter->projection(pt) - orig) * vec;
+              min = (std::min)(min, val);
+              max = (std::max)(max, val);
+            }
+          }
+        }
+
+        if (min != std::numeric_limits<double>::max() &&
+            max != -std::numeric_limits<double>::max())
+          f << "2 " << orig + min * vec << " " << orig + max * vec << std::endl;          
+      }
+    }
+    
   }
 };
 
