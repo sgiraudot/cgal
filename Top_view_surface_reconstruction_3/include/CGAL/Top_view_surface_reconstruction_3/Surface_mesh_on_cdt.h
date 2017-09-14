@@ -156,6 +156,7 @@ private:
   NVN_map m_nvv_map;
   F2F_map m_f2f_map;
   std::vector<Plane_3> m_planes;
+  std::vector<double> m_plane_weights;
 
 public:
 
@@ -173,6 +174,7 @@ public:
   const Mesh& mesh() const { return m_mesh; }
   const CDT& cdt() const { return m_cdt; }
   std::vector<Plane_3>& planes() { return m_planes; }
+  std::vector<double>& plane_weights() { return m_plane_weights; }
   
   Vertex_handle cdt_vertex (Vertex_index vi) const { return m_v2v_map[vi]; }
   Vertex_index mesh_vertex (Vertex_handle vh, std::size_t idx = 0) const { return vh->info()[idx].second; }
@@ -259,6 +261,12 @@ public:
     return m_cdt.incident_constraints (vh, output);
   }
 
+  template <typename OutputItFaces>
+  OutputItFaces get_conflicts (const Point_2& p, OutputItFaces fit, Face_handle start = Face_handle())
+  {
+    return m_cdt.get_conflicts (p, fit, start);
+  }
+
   bool remove_constraint (Vertex_handle a, Vertex_handle b)
   {
     Face_handle f;
@@ -295,13 +303,26 @@ public:
   bool has_mesh_face (Face_handle fh) const { return (int(fh->info().index) >= 0); }
   bool is_default (Face_handle fh) const { return (int(fh->info().index) == -1); }
   void make_default (Face_handle fh) { fh->info().index = Face_index(-1); }
-  bool is_buffer (Face_handle fh) const { return (int(fh->info().index) == -2) || int(fh->info().index) == -4; }
+  bool is_buffer (Face_handle fh) const
+  { return (int(fh->info().index) == -2
+            || int(fh->info().index) == -4
+            || int(fh->info().index) == -5);
+  }
   void make_buffer (Face_handle fh) { fh->info().index = Face_index(-2); }
   bool is_ignored (Face_handle fh) const { return (int(fh->info().index) == -3); }
   void make_ignored (Face_handle fh) { fh->info().index = Face_index(-3); }
-  bool is_unhandled_buffer (Face_handle fh) const { return (int(fh->info().index) == -2); }
-  bool is_handled_buffer (Face_handle fh) const { return (int(fh->info().index) == -4); }
-  void make_handled_buffer (Face_handle fh) { fh->info().index = Face_index(-4); }
+  bool is_default_buffer (Face_handle fh) const { return (int(fh->info().index) == -2); }
+  bool is_wall_buffer (Face_handle fh) const { return (int(fh->info().index) == -4); }
+  void make_wall_buffer (Face_handle fh) { fh->info().index = Face_index(-4); }
+  bool is_ridge_buffer (Face_handle fh) const { return (int(fh->info().index) == -5); }
+  void make_ridge_buffer (Face_handle fh) { fh->info().index = Face_index(-5); }
+  bool is_ignored_buffer (Face_handle fh) const { return (int(fh->info().index) == -7); }
+  void make_ignored_buffer (Face_handle fh) { fh->info().index = Face_index(-7); }
+  bool is_nondefault_buffer (Face_handle fh) const { return (int(fh->info().index) == -4
+                                                             || int(fh->info().index) == -5
+                                                             || int(fh->info().index) == -7); }
+  bool is_pending (Face_handle fh) const { return (int(fh->info().index) == -6); }
+  void make_pending (Face_handle fh) { fh->info().index = Face_index(-6); }
 
   int cw (int i) const { return m_cdt.cw(i); }
   int ccw (int i) const { return m_cdt.ccw(i); }
@@ -348,7 +369,21 @@ public:
 
   Vertex_index insert (Vertex_handle vh, const Point_3& point)
   {
+    CGAL_assertion (vh->info().empty());
+
     Vertex_index vi = m_mesh.add_vertex (point);
+    vh->info().push_back(std::make_pair(Direction_2(0,0), vi));
+    m_v2v_map[vi] = vh;
+    return vi;
+  }
+
+  Vertex_index insert (Vertex_handle vh)
+  {
+    CGAL_assertion (vh->info().empty());
+
+    Vertex_index vi = m_mesh.add_vertex (Point_3 (vh->point().x(), vh->point().y(),
+                                                  std::numeric_limits<double>::quiet_NaN()));
+    vh->info().push_back(std::make_pair(Direction_2(0,0), vi));
     m_v2v_map[vi] = vh;
     return vi;
   }
@@ -392,6 +427,12 @@ public:
       m_mesh.remove_vertex (vh->info()[0].second);
       vh->info().clear();
     }
+  }
+
+  void remove_mesh_face (Face_handle fh)
+  {
+    m_mesh.remove_face(fh->info().index);
+    fh->info().index = Face_index();
   }
 
   void remove_incident_constraints (Vertex_handle vh)
@@ -527,6 +568,8 @@ public:
 
   std::size_t find_section_of_point_from_vertex_view (Vertex_handle vh, const Point_2& point)
   {
+    CGAL_assertion (!vh->info().empty());
+    
     if (vh->info().size() == 1)
       return 0;
 
@@ -785,11 +828,26 @@ public:
       m_mesh.point(vh->info()[i].second) = Point_3 (new_point.x(), new_point.y(), z);
     }
   }
-      
-  double estimate_height_with_plane (Vertex_handle vh, std::size_t plane_index)
+
+  template <typename PlaneIndexRange>
+  double estimate_height_with_planes (const Point_2& pt, const PlaneIndexRange& planes,
+                                      double epsilon)
+  {
+    return weighted_barycenter_of_projections_on_planes (pt, planes).z();
+    
+    Point_3 ref = barycenter_of_projections_on_planes (pt, planes);
+    Point_3 candidate = least_squares_plane_intersection(planes);
+
+    if (CGAL::abs(ref.z() - candidate.z()) < epsilon * epsilon)
+      ref = candidate;
+    
+    return ref.z();
+  }
+  
+  double estimate_height_with_plane (const Point_2& pt, std::size_t plane_index)
   {
     const Plane_3& plane = m_planes[plane_index];
-    Line_3 line (Point_3 (vh->point().x(), vh->point().y(), 0.),
+    Line_3 line (Point_3 (pt.x(), pt.y(), 0.),
                  Vector_3 (0., 0., 1.));
 
     typename CGAL::cpp11::result_of<typename Kernel::Intersect_3(Line_3, Plane_3)>::type
@@ -799,6 +857,11 @@ public:
       return inter->z();
     
     return std::numeric_limits<double>::max();
+  }
+  
+  double estimate_height_with_plane (Vertex_handle vh, std::size_t plane_index)
+  {
+    return estimate_height_with_plane (vh->point(), plane_index);
   }
 
   void estimate_missing_heights_no_limit (Vertex_handle vh)
@@ -897,7 +960,13 @@ public:
   template <typename PlaneIndexRange>
   Point_3 barycenter_of_projections_on_planes (Vertex_handle vh, const PlaneIndexRange& planes)
   {
-    Point_3 out (vh->point().x(), vh->point().y(), 0.);
+    return barycenter_of_projections_on_planes (vh->point(), planes);
+  }
+
+  template <typename PlaneIndexRange>
+  Point_3 barycenter_of_projections_on_planes (const Point_2& point, const PlaneIndexRange& planes)
+  {
+    Point_3 out (point.x(), point.y(), 0.);
     std::size_t nb = 0;
     
     Line_3 line (out, typename GeomTraits::Vector_3 (0., 0., 1.));
@@ -921,7 +990,36 @@ public:
 
     return out;
   }
-  
+
+  template <typename PlaneIndexRange>
+  Point_3 weighted_barycenter_of_projections_on_planes (const Point_2& point, const PlaneIndexRange& planes)
+  {
+    Point_3 out (point.x(), point.y(), 0.);
+    
+    Line_3 line (out, typename GeomTraits::Vector_3 (0., 0., 1.));
+
+    double accu = 0.;
+    
+    BOOST_FOREACH (std::size_t idx, planes)
+    {
+      Plane_3& plane = m_planes[idx];
+      typename CGAL::cpp11::result_of<typename GeomTraits::Intersect_3
+                                      (Line_3,
+                                       Plane_3)>::type
+        result = CGAL::intersection(line, plane);
+      typename GeomTraits::Point_3* inter;
+      if (result && (inter = boost::get<typename GeomTraits::Point_3>(&*result)))
+      {
+        out = CGAL::barycenter (*inter, m_plane_weights[idx], out, accu);
+        accu += m_plane_weights[idx];
+      }
+      else
+        CGAL_assertion(false);
+    }
+
+    return out;
+  }
+
   template <typename PlaneIndexRange>
   Point_3 least_squares_plane_intersection (const PlaneIndexRange& incident_planes)
   {
@@ -973,6 +1071,61 @@ public:
     return point;
   }
 
+
+  std::size_t segment_into_superfacets()
+  {
+    std::size_t current_index = 0;
+    
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin();
+         it != m_cdt.finite_faces_end(); ++ it)
+    {
+      if (!is_default(it))
+        continue;
+
+      std::queue<Face_handle> todo;
+      todo.push (it);
+
+      while (!todo.empty())
+      {
+        Face_handle current = todo.front();
+        todo.pop();
+
+        if (!is_default(current))
+          continue;
+
+        current->info().index = Face_index(current_index);
+
+        for (std::size_t i = 0; i < 3; ++ i)
+        {
+          if (!is_constrained (std::make_pair (current, i))
+              && is_default(current->neighbor(i))
+              && !m_cdt.is_infinite(current->neighbor(i)))
+            todo.push(current->neighbor(i));
+        }
+      }
+      
+      ++ current_index;
+    }
+
+    return current_index;
+  }
+
+  void apply_planes_and_reset_superfacets (const std::vector<std::size_t>& indices)
+  {
+    m_plane_weights.resize (m_planes.size(), 0.);
+    
+    for (Finite_faces_iterator it = m_cdt.finite_faces_begin();
+         it != m_cdt.finite_faces_end(); ++ it)
+      if (!is_default(it))
+      {
+        it->info().plane_index = indices[std::size_t(it->info().index)];
+        it->info().index = Face_index();
+        m_plane_weights[it->info().plane_index]
+          += CGAL::abs (CGAL::area (it->vertex(0)->point(),
+                                    it->vertex(1)->point(),
+                                    it->vertex(2)->point()));
+      }
+  }
   
 
   void check_structure_integrity()
@@ -1155,7 +1308,7 @@ public:
     
     std::size_t nb_faces = 0;
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (is_handled_buffer(it))
+      if (is_wall_buffer(it))
         nb_faces ++;
 
     f << "OFF" << std::endl << m_cdt.number_of_vertices() << " " << nb_faces << " 0" << std::endl;
@@ -1169,7 +1322,7 @@ public:
     }
 
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if (is_handled_buffer(it))
+      if (is_wall_buffer(it))
       {
         f << "3";
         for (std::size_t i = 0; i < 3; ++ i)
@@ -1209,7 +1362,7 @@ public:
     {
       int red = 128, green = 128, blue = 128;
       if (is_ignored(it)) { red = 0; green = 0; blue = 0; }
-      else if (is_handled_buffer(it)) { red = 230; green = 0; blue = 0; }
+      else if (is_wall_buffer(it)) { red = 230; green = 0; blue = 0; }
       else if (is_buffer(it)) { red = 0; green = 0; blue = 230; }
         
       f << "3";
@@ -1251,79 +1404,18 @@ public:
     }
   }
 
-  void DEBUG_dump_ply_1() const
+  void DEBUG_dump_ply(const char* filename) const
   {
-    std::ofstream f("debug1.ply");
+    std::ofstream f(filename);
     f.precision(18);
     
-    std::size_t nb_faces = 0;
-    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if(has_mesh_face(it))
-         nb_faces ++;
-
-    std::size_t nb_vertices = 0;
-    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin(); it != m_cdt.finite_vertices_end(); ++ it)
-      if (has_unique_mesh_vertex(it))
-        ++ nb_vertices;
-    
-    f << "ply" << std::endl
-      << "format ascii 1.0" << std::endl
-      << "element vertex " << nb_vertices << std::endl
-      << "property double x" << std::endl
-      << "property double y" << std::endl
-      << "property double z" << std::endl
-      << "element face " << nb_faces << std::endl
-      << "property list uchar int vertex_indices" << std::endl
-      << "property uchar red" << std::endl
-      << "property uchar green" << std::endl
-      << "property uchar blue" << std::endl
-      << "end_header" << std::endl;
-
-    std::map<Vertex_handle, std::size_t> map;
-    std::size_t idx = 0;
-    for (Finite_vertices_iterator it = m_cdt.finite_vertices_begin(); it != m_cdt.finite_vertices_end(); ++ it)
-      if (has_unique_mesh_vertex(it))
-      {
-        f << point(it) << std::endl;
-        map[it] = idx ++;
-      }
-
-    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if(has_mesh_face(it))
-      {
-        int red = 0, green = 0, blue = 0;
-        if (it->info().has_plane())
-        {
-          srand(it->info().plane_index);
-          red = 64 + rand() % 128;
-          green = 64 + rand() % 128;
-          blue = 64 + rand() % 128;
-        }
-        
-        f << "3";
-        for (std::size_t i = 0; i < 3; ++ i)
-          f << " " << map[it->vertex(i)];
-        f << " " << red << " " << green << " " << blue << std::endl;
-      }
-  }
-
-  void DEBUG_dump_ply_2() const
-  {
-    std::ofstream f("debug2.ply");
-    f.precision(18);
-    
-    std::size_t nb_faces = 0;
-    for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if(!is_ignored(it))
-         nb_faces ++;
-
     f << "ply" << std::endl
       << "format ascii 1.0" << std::endl
       << "element vertex " << m_cdt.number_of_vertices() << std::endl
       << "property double x" << std::endl
       << "property double y" << std::endl
       << "property double z" << std::endl
-      << "element face " << nb_faces << std::endl
+      << "element face " << m_cdt.number_of_faces() << std::endl
       << "property list uchar int vertex_indices" << std::endl
       << "property uchar red" << std::endl
       << "property uchar green" << std::endl
@@ -1339,22 +1431,40 @@ public:
     }
     
     for (Finite_faces_iterator it = m_cdt.finite_faces_begin(); it != m_cdt.finite_faces_end(); ++ it)
-      if(!is_ignored(it))
+    {
+      int red = 0, green = 0, blue = 0;
+      
+      if (is_default_buffer(it))
       {
-        int red = 0, green = 0, blue = 0;
-        if (it->info().has_plane())
-        {
-          srand(it->info().plane_index);
-          red = 64 + rand() % 128;
-          green = 64 + rand() % 128;
-          blue = 64 + rand() % 128;
-        }
-        
-        f << "3";
-        for (std::size_t i = 0; i < 3; ++ i)
-          f << " " << map[it->vertex(i)];
-        f << " " << red << " " << green << " " << blue << std::endl;
+        red = 0;
+        green = 128;
+        blue = 0;
       }
+      else if (is_wall_buffer(it))
+      {
+        red = 0;
+        green = 0;
+        blue = 128;
+      }
+      else if (is_ridge_buffer(it))
+      {
+        red = 128;
+        green = 0;
+        blue = 0;
+      }
+      else if (it->info().has_plane())
+      {
+        srand(it->info().plane_index);
+        red = 64 + rand() % 128;
+        green = 64 + rand() % 128;
+        blue = 64 + rand() % 128;
+      }
+               
+      f << "3";
+      for (std::size_t i = 0; i < 3; ++ i)
+        f << " " << map[it->vertex(i)];
+      f << " " << red << " " << green << " " << blue << std::endl;
+    }
   }
 
   void DEBUG_dump_poly()

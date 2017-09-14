@@ -34,6 +34,7 @@ public:
   typedef typename SMCDT::Face_handle Face_handle;
   typedef typename SMCDT::Face_index Face_index;
   typedef typename SMCDT::Finite_faces_iterator Finite_faces_iterator;
+  typedef typename SMCDT::Face_circulator Face_circulator;
   typedef typename SMCDT::Line_face_circulator Line_face_circulator;
 
   struct Sort_by_map
@@ -67,6 +68,7 @@ public:
   struct Line
   {
     Line_2 support;
+    bool is_ridge;
     std::deque<Face_handle> buffer;
   };
 
@@ -169,7 +171,8 @@ public:
   std::size_t size() const { return m_lines.size(); }
   iterator begin(std::size_t i) { return iterator(this, i); }
   iterator end(std::size_t i) { return iterator(this, i, true); }
-
+  bool is_ridge (std::size_t i) { return m_lines[i].is_ridge; }
+  
   Point_2& source (const Line& l) { return l.buffer.front()->info().endpoint; }
   Point_2& target (const Line& l) { return l.buffer.back()->info().endpoint; }
   Segment_2 segment (const Line& l) { return Segment_2 (source(l), target(l)); }
@@ -177,12 +180,21 @@ public:
   {
     return CGAL::squared_distance (source(l), target(l));
   }
-  
+
+  Point_3 point_3 (const Point_2& point_2, const Line_3& support) const
+  {
+    Point_3 input_3 (point_2.x(), point_2.y(), 0.);
+    Point_3 proj = support.projection(input_3);
+    Line_3 vertical (input_3, Vector_3 (0., 0., 1.));
+    return vertical.projection (proj);
+  }
+
+
   void init()
   {
     for (Finite_faces_iterator it = m_mesh.finite_faces_begin();
          it != m_mesh.finite_faces_end(); ++ it)
-      if (m_mesh.is_handled_buffer(it))
+      if (m_mesh.is_nondefault_buffer(it))
         m_buffer.push_back (it);
   }
 
@@ -198,21 +210,23 @@ public:
       {
         Point_2 p = graph.point (graph[i][j]);
         Point_2 q = graph.point (graph[i][j+1]);
-
+        if (p == q)
+          continue;
+        
 //        double length = std::sqrt (CGAL::squared_distance (p, q));
         
         fbegin = m_mesh.locate (p, fend);
         fend = m_mesh.locate (q, fbegin);
 
-        if (m_mesh.is_handled_buffer (fbegin))
+        if (m_mesh.is_nondefault_buffer (fbegin))
           scores.insert (std::make_pair (fbegin, std::numeric_limits<double>::max()));
-        if (m_mesh.is_handled_buffer (fend))
+        if (m_mesh.is_nondefault_buffer (fend))
           scores.insert (std::make_pair (fend, std::numeric_limits<double>::max()));
         
         Line_face_circulator it = m_mesh.line_walk(p, q, fbegin);
         ++ it;
         for (; it != fend; ++ it)
-          if (m_mesh.is_handled_buffer (it))
+          if (m_mesh.is_nondefault_buffer (it))
           {
             // scores[it] = width(it) / length;
             Point_2 m = m_mesh.midpoint (it);
@@ -230,12 +244,52 @@ public:
 
   void run (double epsilon)
   {
-    // Sorting faces to pick most relevant first
-//    std::sort (m_buffer.begin(), m_buffer.end(), Sort_by_planarity (*this, epsilon));
-//    std::random_shuffle (m_buffer.begin(), m_buffer.end());
-
     // Lines
     m_lines.clear();
+
+    // First estimate ridges
+    typedef std::map<std::pair<std::size_t, std::size_t>, Line_3> Map;
+    Map map;
+
+    for (std::size_t n = 0; n < m_buffer.size(); ++ n)
+    {
+      Face_handle fh = m_buffer[n];
+
+      if (!m_mesh.is_ridge_buffer(fh))
+        continue;
+
+      std::pair<std::size_t, std::size_t> planes;
+
+      if (!get_planes (fh, planes))
+        continue;
+
+      typename Map::iterator found = map.find(planes);
+      if (found == map.end())
+      {
+        Line_3 line;
+        if (!m_mesh.intersection_line_of_2_planes (planes.first, planes.second, line))
+          continue;
+        found = map.insert (std::make_pair (planes, line)).first;
+      }
+
+      Line line;
+      line.support = to_2d (found->second);
+      line.is_ridge = true;
+      
+      grow_region_on_ridge (fh, line.buffer, line.support, epsilon);
+
+      if (line.buffer.size() < 2)
+        continue;
+
+      line.buffer.front()->info().endpoint = line.support.projection (m_mesh.midpoint(line.buffer.front()));
+      line.buffer.back()->info().endpoint = line.support.projection (m_mesh.midpoint(line.buffer.back()));
+
+      for (std::size_t i = 0; i < line.buffer.size(); ++ i)
+        line.buffer[i]->info().incident_lines.push_back (m_lines.size());
+
+      m_lines.push_back (line);
+      
+    }
 
     // region growing on buffer faces
     for (std::size_t n = 0; n < m_buffer.size(); ++ n)
@@ -248,6 +302,16 @@ public:
 
       if (line.buffer.size() < 10)
         continue;
+
+      std::size_t nb_ridge = 0;
+      for (std::size_t i = 0; i < line.buffer.size(); ++ i)
+        if (m_mesh.is_ridge_buffer(line.buffer[i]))
+          ++ nb_ridge;
+
+      if (nb_ridge > line.buffer.size() / 2)
+        line.is_ridge = true;
+      else
+        line.is_ridge = false;
 
       line.buffer.front()->info().endpoint = m_mesh.midpoint(line.buffer.front());
       line.buffer.back()->info().endpoint = m_mesh.midpoint(line.buffer.back());
@@ -274,6 +338,16 @@ public:
       if (line.buffer.size() < 2)
         continue;
 
+      std::size_t nb_ridge = 0;
+      for (std::size_t i = 0; i < line.buffer.size(); ++ i)
+        if (m_mesh.is_ridge_buffer(line.buffer[i]))
+          ++ nb_ridge;
+
+      if (nb_ridge > line.buffer.size() / 2)
+        line.is_ridge = true;
+      else
+        line.is_ridge = false;
+      
       line.buffer.front()->info().endpoint = m_mesh.midpoint(line.buffer.front());
       line.buffer.back()->info().endpoint = m_mesh.midpoint(line.buffer.back());
 
@@ -286,6 +360,9 @@ public:
     
     TOP_VIEW_CERR << "  " << m_lines.size() << " line(s) detected after second pass" << std::endl;
 
+    // TODO: complete connexions between degree 3 - degree 3
+
+    
     fix_connections();
 
     DEBUG_dump_polyline("detected_no_regularization.polylines.txt", true);
@@ -295,7 +372,8 @@ public:
 
   void grow_region (Face_handle fh, std::deque<Face_handle>& faces, Line_2& line, double epsilon)
   {
-    if (degree(fh) == 3) // do not originate region from 3
+    std::size_t deg = degree(fh);
+    if (deg == 0 || deg == 3) // do not originate region from 3 or isolated
       return;
       
     if (!face_available (fh))
@@ -308,16 +386,18 @@ public:
     faces.push_back (fh);
     triangles.push_back (m_mesh.triangle (fh));
 
+    
     std::set<Face_to_grow_on> todo;
     for (std::size_t i = 0; i < 3; ++ i)
-      if (m_mesh.is_handled_buffer (fh->neighbor(i)))
+      if (m_mesh.is_nondefault_buffer (fh->neighbor(i)))
         todo.insert (Face_to_grow_on (0., fh->neighbor(i), fh, (todo.size() == 0)));
-
+      
     CGAL_assertion (todo.size() == 1 || todo.size() == 2);
       
     std::size_t iterations = 0;
 
     std::set<Face_handle> done;
+    done.insert(fh);
       
     while (!todo.empty())
     {
@@ -361,7 +441,7 @@ public:
       if (deg == 2) // Standard case
         for (std::size_t i = 0; i < 3; ++ i)
         {
-          if (m_mesh.is_handled_buffer (current->neighbor(i)) && current->neighbor(i) != previous)
+          if (m_mesh.is_nondefault_buffer (current->neighbor(i)) && current->neighbor(i) != previous)
           {
             double dist = CGAL::squared_distance (m_mesh.triangle(current->neighbor(i)), line);
             todo.insert (Face_to_grow_on (dist, current->neighbor(i), current, push_back));
@@ -373,7 +453,7 @@ public:
         int chosen = -1;
         for (std::size_t i = 0; i < 3; ++ i)
         {
-          if (m_mesh.is_handled_buffer (current->neighbor(i)) && current->neighbor(i) != previous)
+          if (m_mesh.is_nondefault_buffer (current->neighbor(i)) && current->neighbor(i) != previous)
           {
             if (first_buffer ==  -1)
               first_buffer = int(i);
@@ -407,53 +487,114 @@ public:
     }
   }
 
+  void grow_region_on_ridge (Face_handle fh, std::deque<Face_handle>& faces,
+                             const Line_2& line, double epsilon)
+  {
+    std::size_t deg = degree_ridge (fh);
+    if (deg == 0 || deg == 3) // do not originate region from 3 or isolated
+      return;
+    
+    if (!face_available (fh))
+      return;
+
+    Triangle_2 tri = m_mesh.triangle(fh);
+    if (CGAL::squared_distance (tri, line) > epsilon * epsilon)
+      return;
+    
+    faces.push_back (fh);
+    
+    std::queue<Face_to_grow_on> todo;
+    for (std::size_t i = 0; i < 3; ++ i)
+      if (m_mesh.is_ridge_buffer (fh->neighbor(i)))
+        todo.push (Face_to_grow_on (0., fh->neighbor(i), fh, (todo.size() == 0)));
+      
+    CGAL_assertion (todo.size() == 1 || todo.size() == 2);
+      
+    std::size_t iterations = 0;
+
+    std::set<Face_handle> done;
+    done.insert(fh);
+      
+    while (!todo.empty())
+    {
+      Face_handle current = todo.front().current;
+      Face_handle previous = todo.front().previous;
+      bool push_back = todo.front().push_back;
+      todo.pop();
+
+      if (!done.insert (current).second)
+        continue;
+
+      Triangle_2 triangle = m_mesh.triangle(current);
+      double dist = CGAL::squared_distance (triangle, line);
+      if (!face_available (current, previous) ||
+          dist > epsilon * epsilon)
+        continue;
+
+      if (push_back)
+        faces.push_back (current);
+      else
+        faces.push_front (current);
+
+      std::size_t deg = degree (current);
+
+      if (deg == 2)
+        for (std::size_t i = 0; i < 3; ++ i)
+        {
+          if (m_mesh.is_nondefault_buffer (current->neighbor(i)) && current->neighbor(i) != previous)
+            todo.push (Face_to_grow_on (0., current->neighbor(i), current, push_back));
+        }
+      ++ iterations;
+    }
+  }
+
   void fix_connections()
   {
     std::vector<Face_handle> to_add;
 
+    std::ofstream connl ("connections_lines.polylines.txt");
+    connl.precision(18);
+    
     for (std::size_t n = 0; n < m_buffer.size();)
     {
-      if (!m_buffer[n]->info().has_endpoint())
-      {
-        ++ n;
-        continue;
-      }
-
       Face_handle fh = m_buffer[n ++];
       std::vector<std::size_t>& incident_lines = fh->info().incident_lines;
-
-      if (incident_lines.size() == 1) // Find if incident to another line
+      
+      if (fh->info().has_endpoint())
       {
-        Line& line = m_lines[incident_lines[0]];
+        if (incident_lines.size() == 1) // Find if incident to another line
+        {
+          Line& line = m_lines[incident_lines[0]];
         
-        for (std::size_t i = 0; i < 3; ++ i)
-          if (m_mesh.is_handled_buffer (fh->neighbor(i)))
-          {
-            std::vector<std::size_t>& il2 = fh->neighbor(i)->info().incident_lines;
-            bool okay = true;
-            for (std::size_t j = 0; j < il2.size(); ++ j)
-              if (il2[j] == incident_lines[0])
-              {
-                okay = false;
-                break;
-              }
-            if (!okay)
-              continue;
+          for (std::size_t i = 0; i < 3; ++ i)
+            if (m_mesh.is_nondefault_buffer (fh->neighbor(i)))
+            {
+              std::vector<std::size_t>& il2 = fh->neighbor(i)->info().incident_lines;
+              bool okay = true;
+              for (std::size_t j = 0; j < il2.size(); ++ j)
+                if (il2[j] == incident_lines[0])
+                {
+                  okay = false;
+                  break;
+                }
+              if (!okay)
+                continue;
 
-            to_add.push_back (fh->neighbor(i));
+              to_add.push_back (fh->neighbor(i));
 
-            if (line.buffer.front() == fh)
-              line.buffer.push_front(fh->neighbor(i));
-            else
-              line.buffer.push_back(fh->neighbor(i));
-            il2.push_back(incident_lines[0]);
+              if (line.buffer.front() == fh)
+                line.buffer.push_front(fh->neighbor(i));
+              else
+                line.buffer.push_back(fh->neighbor(i));
+              il2.push_back(incident_lines[0]);
 
-            fh->info().erase_endpoint();
-            break;
-          }
+              fh->info().erase_endpoint();
+              break;
+            }
+        }
       }
     }
-
+    
     std::ofstream conn ("connections.xyz");
     conn.precision(18);
     for (std::size_t i = 0; i < to_add.size(); ++ i)
@@ -461,6 +602,70 @@ public:
       to_add[i]->info().endpoint = m_mesh.midpoint (to_add[i]);
       conn << m_mesh.midpoint(to_add[i]) << " 0" << std::endl;
     }
+
+    for (std::size_t n = 0; n < m_buffer.size();)
+    {
+      Face_handle fh = m_buffer[n ++];
+      std::vector<std::size_t>& incident_lines = fh->info().incident_lines;
+      
+      if (!fh->info().has_endpoint())
+      {
+        std::size_t deg = degree (fh);
+        if (deg == 3 && incident_lines.size() < 3)
+        {
+          for (std::size_t i = 0; i < 3; ++ i)
+          {
+            Face_handle neighbor = fh->neighbor(i);            
+            bool is_incident = false;
+            
+            for (std::size_t j = 0; j < incident_lines.size(); ++ j)
+            {
+              for (std::size_t k = 0; k < neighbor->info().incident_lines.size(); ++ k)
+                if (incident_lines[j] == neighbor->info().incident_lines[k])
+                {
+                  is_incident = true;
+                  break;
+                }
+              if (is_incident)
+                break;
+            }
+
+            if (is_incident)
+              continue;
+
+            Line line;
+            line.buffer.push_back (fh);
+            line.buffer.push_back (neighbor);
+
+            Point_2 a, b;
+            if (fh->info().has_endpoint())
+              a = fh->info().endpoint;
+            else
+              a = m_mesh.midpoint(fh);
+
+            if (neighbor->info().has_endpoint())
+              b = neighbor->info().endpoint;
+            else
+              b = m_mesh.midpoint(neighbor);
+
+            connl << "2 " << a << " 0 " << b << " 0" << std::endl;
+            line.support = Line_2 (a, b);
+
+            if (!fh->info().has_endpoint())
+              fh->info().endpoint = line.support.projection (a);
+            if (!neighbor->info().has_endpoint())
+              neighbor->info().endpoint = line.support.projection (b);
+            
+            fh->info().incident_lines.push_back (m_lines.size());
+            neighbor->info().incident_lines.push_back (m_lines.size());
+            m_lines.push_back (line);
+          }
+        }
+
+      }
+
+    }
+
   }
 
   void regularize (double epsilon)
@@ -600,6 +805,7 @@ public:
         source = target;
       }
     }
+
   }
 
   Point_2 regularized_point_degree_1 (const Point_2& point, Line& line)
@@ -749,7 +955,7 @@ public:
   {
     int first_buffer = -1;
     for (std::size_t i = 0; i < 3; ++ i)
-      if (!m_mesh.is_handled_buffer(fh->neighbor(i)))
+      if (!m_mesh.is_nondefault_buffer(fh->neighbor(i)))
       {
         if (first_buffer == -1)
           first_buffer = int(i);
@@ -772,7 +978,16 @@ public:
   {
     std::size_t out = 0;
     for (std::size_t i = 0; i < 3; ++ i)
-      if (m_mesh.is_handled_buffer(fh->neighbor(i)))
+      if (m_mesh.is_nondefault_buffer(fh->neighbor(i)))
+        ++ out;
+    return out;
+  }
+
+  std::size_t degree_ridge (Face_handle fh)
+  {
+    std::size_t out = 0;
+    for (std::size_t i = 0; i < 3; ++ i)
+      if (m_mesh.is_ridge_buffer(fh->neighbor(i)))
         ++ out;
     return out;
   }
@@ -781,7 +996,7 @@ public:
   {
     int first_buffer = -1;
     for (std::size_t i = 0; i < 3; ++ i)
-      if (!m_mesh.is_handled_buffer(fh->neighbor(i)))
+      if (!m_mesh.is_nondefault_buffer(fh->neighbor(i)))
       {
         if (first_buffer == -1)
           first_buffer = int(i);
@@ -829,7 +1044,7 @@ public:
 
       Face_handle next = Face_handle();
       for (std::size_t i = 0; i < 3; ++ i)
-        if (m_mesh.is_unhandled_buffer (fh->neighbor(i))
+        if (m_mesh.is_nondefault_buffer (fh->neighbor(i))
             && fh->neighbor(i) != previous)
         {
           if (next == Face_handle())
@@ -845,6 +1060,58 @@ public:
     }
   }
 
+  bool get_planes (Face_handle fh, std::pair<std::size_t, std::size_t>& planes)
+  {
+    // check faces around vertices of fh to find indices of
+    // adjacent planes. If number != 2, return false.
+
+    bool first_found = false;
+    bool second_found = false;
+    
+    for (std::size_t i = 0; i < 3; ++ i)
+    {
+      Face_circulator circ = m_mesh.incident_faces(fh->vertex(i));
+      Face_circulator start = circ;
+      do
+      {
+        if (m_mesh.is_pending(circ) && circ->info().has_plane())
+        {
+          if (!first_found)
+          {
+            planes.first = circ->info().plane_index;
+            first_found = true;
+          }
+          else if (!second_found &&
+                   planes.first != circ->info().plane_index)
+          {
+            planes.second = circ->info().plane_index;
+            second_found = true;
+          }
+          else if (circ->info().plane_index != planes.first &&
+                   circ->info().plane_index != planes.second)
+            return false;
+        }
+        ++ circ;
+      }
+      while (circ != start);
+    }
+
+    if (!second_found)
+      return false;
+    
+    if (planes.second < planes.first)
+      std::swap (planes.first, planes.second);
+    
+    return true;
+  }
+
+  Line_2 to_2d (const Line_3& line_3)
+  {
+    Point_2 orig (line_3.point().x(), line_3.point().y());
+    Vector_2 vec (line_3.to_vector().x(), line_3.to_vector().y());
+    return Line_2 (orig, vec);
+  }
+  
   void DEBUG_dump_ply(const char* filename)
   {
     std::ofstream f(filename);

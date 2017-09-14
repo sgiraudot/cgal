@@ -85,7 +85,9 @@ public:
             degree(border.back(), *this) == 1);
   }
 
-  void filter_small_terminal_borders (double epsilon)
+  template <typename OutputIterator>
+  void filter_small_terminal_borders (double epsilon,
+                                      OutputIterator output)
   {
     std::vector<std::pair<double, vertex_descriptor> > terminal_vertices;
     
@@ -179,14 +181,10 @@ public:
         to_remove.push_back (vd);
 
     for (std::size_t i = 0; i < to_remove.size(); ++ i)
+    {
+      *(output ++) = point(to_remove[i]);
       remove_vertex (to_remove[i], *this);
-
-    std::ofstream f ("test.polylines.txt");
-    f.precision(18);
-    
-    BOOST_FOREACH (edge_descriptor ed, edges(*this))
-      f << "2 " << point (source(ed, *this)) << " 0 "
-        << point (target(ed, *this)) << " 0" << std::endl;
+    }
   }
 
 
