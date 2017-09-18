@@ -37,6 +37,7 @@
 #include <CGAL/Advancing_front_surface_reconstruction.h>
 #include <CGAL/Shape_detection_3.h>
 #include <CGAL/structure_point_set.h>
+#include <CGAL/top_view_surface_reconstruction.h>
 
 #include "ui_Surface_reconstruction_plugin.h"
 #include "CGAL/Kernel_traits.h"
@@ -763,7 +764,12 @@ public:
   unsigned int min_size_subset () const { return m_minSizeSubset->value (); }
   bool generate_structured () const { return m_generateStructured->isChecked (); }
   QString solver () const { return m_inputSolver->currentText (); }
-  
+
+  // Top view
+  double epsilon() const { return m_epsilon_field->value(); }
+  double quantile() const { return m_quantile->value(); }
+  double color_facades() const { return false; }
+
 };
 
 #include <CGAL/Scale_space_surface_reconstruction_3.h>
@@ -793,6 +799,7 @@ public:
   void scale_space_reconstruction (const Polyhedron_demo_surface_reconstruction_plugin_dialog& dialog);
   void poisson_reconstruction (const Polyhedron_demo_surface_reconstruction_plugin_dialog& dialog);
   void ransac_reconstruction (const Polyhedron_demo_surface_reconstruction_plugin_dialog& dialog);
+  void top_view_reconstruction (const Polyhedron_demo_surface_reconstruction_plugin_dialog& dialog);
   
   //! Applicate for Point_sets with normals.
   bool applicable(QAction*) const {
@@ -940,6 +947,8 @@ private:
     }
   }
 
+  void propagate_point_set_colors_to_sm (Point_set& points, SMesh& sm, bool color_facades);
+
 public Q_SLOTS:
   void on_actionSurfaceReconstruction_triggered();
 }; // end class Polyhedron_surface_reconstruction_plugin
@@ -976,6 +985,9 @@ void Polyhedron_demo_surface_reconstruction_plugin::on_actionSurfaceReconstructi
           ransac_reconstruction (dialog);
           break;
         case 4:
+          top_view_reconstruction (dialog);
+          break;
+        case 5:
           automatic_reconstruction (dialog);
           break;
         default:
@@ -1434,6 +1446,115 @@ void Polyhedron_demo_surface_reconstruction_plugin::ransac_reconstruction
     ransac_reconstruction_impl<Traits, typename CGAL::Shape_detection_3::Efficient_RANSAC<Traits> >(dialog);
 }
 
+void Polyhedron_demo_surface_reconstruction_plugin::propagate_point_set_colors_to_sm
+(Point_set& points,
+ SMesh& sm,
+ bool color_facades)
+{
+  typedef Kernel Geom_traits;
+  typedef CGAL::Search_traits_3<Geom_traits> SearchTraits_3;
+  typedef CGAL::Search_traits_adapter <Point_set::Index, Point_set::Point_map, SearchTraits_3> Search_traits;
+  typedef CGAL::Orthogonal_k_neighbor_search<Search_traits> Neighbor_search;
+  typedef Neighbor_search::Tree Tree;
+  typedef Neighbor_search::Distance Distance;
+    
+  typedef SMesh Mesh;
+  typedef boost::graph_traits<Mesh>::vertex_descriptor vertex_descriptor;
+  typedef boost::graph_traits<Mesh>::face_descriptor face_descriptor;
+  typedef boost::graph_traits<Mesh>::halfedge_descriptor halfedge_descriptor;
+    
+  // build kdtree
+  Tree tree(points.begin(),
+            points.end(),
+            Tree::Splitter(),
+            Search_traits (points.point_map())
+            );
+  Distance tr_dist(points.point_map());
+
+  Mesh::Property_map<vertex_descriptor, Mesh::Point> positions =
+    sm.points();
+  Mesh::Property_map<face_descriptor, CGAL::Color> color_prop;
+  boost::tie(color_prop, boost::tuples::ignore) = sm.add_property_map<face_descriptor, CGAL::Color>("f:color");
+
+  BOOST_FOREACH(face_descriptor fd, faces(sm))
+    {
+      Kernel::Point_3 centroid(0., 0., 0.);
+      std::size_t nb = 0;
+      std::vector<Kernel::Point_3> pts;
+        
+      BOOST_FOREACH(halfedge_descriptor hd, halfedges_around_face(halfedge(fd, sm),sm))
+        {
+          centroid = CGAL::barycenter (positions[source(hd, sm)], 1, centroid, nb);
+          pts.push_back (positions[source(hd,sm)]);
+          ++ nb;
+        }
+
+      if (!color_facades && CGAL::normal (pts[0], pts[1], pts[2]) * Kernel::Vector_3(0., 0., 1.) == 0.)
+        color_prop[fd] = CGAL::Color(128, 128, 128);
+      else
+        {
+          Neighbor_search search(tree, centroid, 1, 0, true, tr_dist);
+
+          Point_set::Index index = search.begin()->first;
+          color_prop[fd] = CGAL::Color(255 * points.red(index),
+                                       255 * points.green(index),
+                                       255 * points.blue(index));
+        }
+    }
+}
+
+void Polyhedron_demo_surface_reconstruction_plugin::top_view_reconstruction
+(const Polyhedron_demo_surface_reconstruction_plugin_dialog& dialog)
+{
+  CGAL::Random rand(time(0));
+  const CGAL::Three::Scene_interface::Item_id index = scene->mainSelectionIndex();
+
+  Scene_points_with_normal_item* item =
+    qobject_cast<Scene_points_with_normal_item*>(scene->item(index));
+
+  if(item)
+    {
+      // Gets point set
+      Point_set* points = item->point_set();
+      if(points == NULL)
+        return;
+      
+      points->reset_indices();
+
+      QApplication::setOverrideCursor(Qt::WaitCursor);
+
+      CGAL::Surface_mesh_on_cdt<Kernel> smcdt;
+      CGAL::top_view_surface_reconstruction (points->begin(), points->end(),
+                                             points->point_map(),
+                                             smcdt,
+                                             CGAL::Top_view_surface_reconstruction_3::Parameters
+                                             (dialog.epsilon(), dialog.quantile()));
+    
+      std::cerr << "Adding mesh to scene" << std::endl;
+      SMesh* smesh = new SMesh(smcdt.mesh());
+      
+      // if (points->has_colors())
+      //   propagate_point_set_colors_to_sm (*points, *smesh, dialog.color_facades());
+      Scene_surface_mesh_item* sm_item = new Scene_surface_mesh_item(smesh);
+      sm_item->setName(tr("%1 (top view reconstruction)").arg(item->name()));
+      sm_item->setRenderingMode(Flat);
+      sm_item->setVisible(true);
+
+
+    
+      // Updates scene
+      sm_item->invalidateOpenGLBuffers();
+      
+      scene->addItem(sm_item);
+      scene->itemChanged(index);
+
+      //    delete horizontal_points;
+        
+      QApplication::restoreOverrideCursor();
+
+      item->setVisible(false);
+    }
+}
 
 
 #include "Surface_reconstruction_plugin.moc"
