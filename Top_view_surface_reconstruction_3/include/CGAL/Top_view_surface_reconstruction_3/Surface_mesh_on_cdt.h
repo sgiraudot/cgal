@@ -253,6 +253,7 @@ public:
   Edge_circulator incident_edges (Vertex_handle vh) { return m_cdt.incident_edges (vh); }
   Vertex_circulator incident_vertices (Vertex_handle vh) { return m_cdt.incident_vertices (vh); }
   void insert_constraint (Vertex_handle v0, Vertex_handle v1) { m_cdt.insert_constraint (v0, v1); }
+  void remove_constraint (const Edge& e) { m_cdt.remove_constraint (e.first, e.second); }
   bool are_there_incident_constraints (Vertex_handle vh) { return m_cdt.are_there_incident_constraints (vh); }
 
   template <typename OutputItEdges>
@@ -299,7 +300,8 @@ public:
         return false;
     return true;
   }
-  
+
+  bool has_cdt_face (Face_index fi) const { return m_f2f_map[fi] != Face_handle(); }
   bool has_mesh_face (Face_handle fh) const { return (int(fh->info().index) >= 0); }
   bool is_default (Face_handle fh) const { return (int(fh->info().index) == -1); }
   void make_default (Face_handle fh) { fh->info().index = Face_index(-1); }
@@ -318,9 +320,6 @@ public:
   void make_ridge_buffer (Face_handle fh) { fh->info().index = Face_index(-5); }
   bool is_ignored_buffer (Face_handle fh) const { return (int(fh->info().index) == -7); }
   void make_ignored_buffer (Face_handle fh) { fh->info().index = Face_index(-7); }
-  bool is_nondefault_buffer (Face_handle fh) const { return (int(fh->info().index) == -4
-                                                             || int(fh->info().index) == -5
-                                                             || int(fh->info().index) == -7); }
   bool is_pending (Face_handle fh) const { return (int(fh->info().index) == -6); }
   void make_pending (Face_handle fh) { fh->info().index = Face_index(-6); }
 
@@ -473,48 +472,6 @@ public:
       fh->info().index = fi;
       m_f2f_map[fi] = fh;
     }
-    else
-    {
-      std::ofstream file ("bad.off");
-      file.precision(18);
-      file << "OFF\n3 1 0\n"
-           << point(a) << std::endl << point(b) << std::endl << point(c) << std::endl
-           << "3 0 1 2" << std::endl;
-
-      Vertex_index v[3]; v[0] = a; v[1] = b; v[2] = c;
-
-      for (std::size_t vn = 0; vn < 3; ++ vn)
-      {
-        std::set<Face_index> faces;
-        BOOST_FOREACH (Face_index idx, faces_around_target (halfedge (v[vn], m_mesh), m_mesh))
-          if (idx != Face_index())
-            faces.insert (idx);
-
-        std::ostringstream oss;
-        oss << "bad_" << vn << ".off";
-        std::ofstream file2 (oss.str().c_str());
-        
-        file2.precision(18);
-
-        file2 << "OFF" << std::endl
-              << faces.size() * 3 << " " << faces.size() << " 0" << std::endl;
-        BOOST_FOREACH (Face_index fi, faces)
-        {
-          std::cerr << fi;
-          BOOST_FOREACH (Vertex_index vi, vertices_around_face (halfedge(fi, m_mesh), m_mesh))
-          {
-            std::cerr << " " << vi;
-            file2 << point(vi) << std::endl;
-          }
-          std::cerr << std::endl;
-        }
-
-        for (std::size_t i = 0; i < faces.size(); ++ i)
-          file2 << "3 " << 3*i << " " << 3*i + 1 << " " << 3*i + 2 << std::endl;
-      }
-      
-      exit(0);
-    }
   }
 
   bool add_face (Vertex_index a, Vertex_index b, Vertex_index c)
@@ -523,10 +480,6 @@ public:
       m_mesh.add_face (a, b, c);
 
     return (fi != Face_index());
-//    std::cerr << fi << " ";
-    // if (fi >= m_mesh.number_of_faces())
-    //   std::cerr << "WHAT?!" << std::endl;
-    // m_f2f_map[fi] = Face_handle();
   }
 
   void merge_vertices (Vertex_index a, Vertex_index b)
@@ -579,18 +532,6 @@ public:
                                                  vh->info()[(i+1)%(vh->info().size())].first))
         return i;
 
-    // std::ofstream f1("section.polylines.txt", std::ios_base::app);
-    // f1.precision(18);
-    
-    // for (std::size_t i = 0; i < vh->info().size(); ++ i)
-    //   f1 << "2 " << vh->point() << " 0 "
-    //      << (vh->point() + vh->info()[i].first.to_vector()) << " 0 " << std::endl;
-    
-    // std::ofstream file("section.xyz", std::ios_base::app);
-    // file.precision(18);
-    // file << point << " 0" << std::endl;
-    // std::cerr << "Warning section" << std::endl;
-    // exit(0);
     return 0;
   }
 
@@ -1452,6 +1393,12 @@ public:
         green = 0;
         blue = 0;
       }
+      else if (is_ignored_buffer(it))
+      {
+        red = 128;
+        green = 128;
+        blue = 128;
+      }
       else if (it->info().has_plane())
       {
         srand(it->info().plane_index);
@@ -1481,10 +1428,10 @@ public:
 
   void DEBUG_dump_edges()
   {
+    Vector_3 vertical (0., 0., 1.);
+    
     std::ofstream f("edges.polylines.txt");
     f.precision(18);
-    
-    Vector_3 vertical (0., 0., 1.);
 
     BOOST_FOREACH (Edge_index ei, m_mesh.edges())
     {
@@ -1493,25 +1440,29 @@ public:
       const Point_3& p0 = point(v0);
       const Point_3& p1 = point(v1);
 
-      bool is_edge = false;
-      if (m_mesh.is_border(ei))
-        is_edge = true;
-      else
+      Vertex_handle vh0 = cdt_vertex (v0);
+      Vertex_handle vh1 = cdt_vertex (v1);
+
+      CGAL_assertion (vh0 != Vertex_handle() && vh1 != Vertex_handle());
+
+      bool edge = false;
+      
+      Face_handle fh;
+      int idx;
+      if (vh0 == vh1)
+        edge = true;
+      else if (is_edge(vh0, vh1, fh, idx)
+               && is_constrained (std::make_pair(fh, idx)))
       {
         Face_index f0 = m_mesh.face (m_mesh.halfedge(ei, 0));
         Face_index f1 = m_mesh.face (m_mesh.halfedge(ei, 1));
 
-        Vector_3 n0 = CGAL::Polygon_mesh_processing::compute_face_normal (f0, m_mesh);
-        Vector_3 n1 = CGAL::Polygon_mesh_processing::compute_face_normal (f1, m_mesh);
-        
-        if (p0.x() == p1.x() && p0.y() == p1.y() &&
-            CGAL::abs(n0 * n1) < 0.9999)
-          is_edge = true;
-        else if ((n0 * vertical == 0.) != (n1 * vertical == 0.))
-            is_edge = true;
+        if (f0 != Face_index() && f1 != Face_index() &&
+            (has_cdt_face(f0) || has_cdt_face(f1)))
+          edge = true;
       }
-
-      if (is_edge)
+      
+      if (edge)
         f << "2 " << p0 << " " << p1 << std::endl;
     }
   }
