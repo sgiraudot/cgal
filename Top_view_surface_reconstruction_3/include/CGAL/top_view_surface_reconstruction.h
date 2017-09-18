@@ -204,6 +204,7 @@ namespace internal
       
       std::vector<std::pair<typename SMCDT::Vertex_handle, std::size_t> > border_vertices;
 
+      std::vector<typename SMCDT::Edge> edges;
       while (true)
       {
         int e = 3 - (current + pivot);
@@ -213,7 +214,7 @@ namespace internal
               f->vertex(current) == border_vertices.front().first)
             break;
 
-          std::vector<typename SMCDT::Edge> edges;
+          edges.clear();
           mesh.incident_constraints (f->vertex(current), std::back_inserter(edges));
           border_vertices.push_back (std::make_pair (f->vertex(current), edges.size()));
 
@@ -351,8 +352,7 @@ namespace internal
 
       std::queue<typename SMCDT::Edge> todo;
       todo.push(std::make_pair (circ, indinf));
-      std::set<typename SMCDT::Face_handle> done;
-//      cpp11::unordered_set<typename SMCDT::Face_handle> done;
+      cpp11::unordered_set<typename SMCDT::Face_handle> done;
       while (!(todo.empty()))
       {
         typename SMCDT::Edge edge = todo.front();
@@ -493,6 +493,7 @@ namespace internal
       }
     }
     
+    std::vector<typename SMCDT::Face_handle> done;
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end (); ++ it)
     {
@@ -500,7 +501,7 @@ namespace internal
         continue;
 
       std::queue<typename SMCDT::Face_handle> todo;
-      std::vector<typename SMCDT::Face_handle> done;
+      done.clear();
       todo.push (it);
 
       while (!(todo.empty()))
@@ -554,7 +555,8 @@ namespace internal
       std::queue<typename SMCDT::Vertex_handle> todo;
       todo.push(it);
 
-      std::set<typename SMCDT::Vertex_handle> removed;
+      cpp11::unordered_set<typename SMCDT::Vertex_handle> removed;
+      std::vector<typename SMCDT::Vertex_handle> neighbors;
       while (!todo.empty())
       {
         typename SMCDT::Vertex_handle current = todo.front();
@@ -568,7 +570,7 @@ namespace internal
         typename SMCDT::Vertex_circulator circ = mesh.incident_vertices (current);
         typename SMCDT::Vertex_circulator start = circ;
 
-        std::vector<typename SMCDT::Vertex_handle> neighbors;
+        neighbors.clear();
         
         bool incident_to_border = false;
         bool too_long_edge = false;
@@ -624,10 +626,9 @@ namespace internal
                                 it->first->vertex ((it->second + 2)%3));
     }
 
-
     // Remember vertices in border with tag
-    std::set<typename SMCDT::Vertex_handle> ridge_border;
-    std::set<typename SMCDT::Vertex_handle> wall_border;
+    cpp11::unordered_set<typename SMCDT::Vertex_handle> ridge_border;
+    cpp11::unordered_set<typename SMCDT::Vertex_handle> wall_border;
     std::vector<typename SMCDT::Vertex_handle> to_remove;
     for (typename SMCDT::Finite_vertices_iterator it = mesh.finite_vertices_begin();
          it != mesh.finite_vertices_end();)
@@ -669,21 +670,15 @@ namespace internal
     }
 
     // Remove vertices and tag remaining faces
-
     BOOST_FOREACH (typename SMCDT::Vertex_handle vh, to_remove)
     {
       typename GeomTraits::Point_2 point = vh->point();
       mesh.remove (vh);
-
-      std::vector<typename SMCDT::Face_handle> conflict;
-      mesh.get_conflicts (point, std::back_inserter (conflict));
-      for (std::size_t i = 0; i < conflict.size(); ++ i)
-          mesh.make_buffer(conflict[i]);
     }
 
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end(); ++ it)
-      if (mesh.is_buffer (it))
+      if (mesh.is_default (it))
       {
         bool has_ridge = false;
         bool has_wall = false;
@@ -698,7 +693,10 @@ namespace internal
           mesh.make_ridge_buffer(it);
         else if (has_wall && !has_ridge)
           mesh.make_wall_buffer(it);
+        else
+          mesh.make_buffer(it);
       }
+
   }
 
   template <typename GeomTraits>
@@ -709,7 +707,7 @@ namespace internal
     typedef Surface_mesh_on_cdt<GeomTraits> SMCDT;
     typedef Border_graph<GeomTraits> Graph;
     
-    typedef std::map<typename SMCDT::Face_handle, typename Graph::vertex_descriptor> Map_f2v;
+    typedef cpp11::unordered_map<typename SMCDT::Face_handle, typename Graph::vertex_descriptor> Map_f2v;
     
     Map_f2v map_f2v;
 
@@ -751,7 +749,7 @@ namespace internal
     
     for (std::size_t i = 0; i < removed_points.size(); ++ i)
     {
-      fhint = mesh.locate(removed_points[i]);
+      fhint = mesh.locate(removed_points[i], fhint);
       mesh.make_ignored_buffer(fhint);
     }
     
@@ -769,7 +767,9 @@ namespace internal
     std::vector<std::vector<typename GeomTraits::Triangle_2> > all_facets (graph.size());
 
     std::vector<std::vector<typename GeomTraits::Line_2> > all_supports (graph.size());
-
+    std::vector<std::size_t> tokeep;
+    std::vector<typename Graph::vertex_descriptor> new_polyline;
+      
     TOP_VIEW_CERR << "  Simplification" << std::endl;
     for (std::size_t i = 0; i < graph.size(); ++ i)
     {
@@ -786,7 +786,7 @@ namespace internal
         facets.push_back (mesh.triangle (hint));
       }
 
-      std::vector<std::size_t> tokeep;
+      tokeep.clear();
       tokeep.push_back (0);
       tokeep.push_back (graph[i].size() - 1);
       std::queue<std::pair<std::size_t, std::size_t> > todo;
@@ -848,7 +848,7 @@ namespace internal
       for (std::size_t j = 0; j < graph[i].size() - 1; ++ j)
         remove_edge (graph[i][j], graph[i][j+1], graph);
 
-      std::vector<typename Graph::vertex_descriptor> new_polyline;
+      new_polyline.clear();
       for (std::size_t j = 0; j < tokeep.size(); ++ j)
       {
         new_polyline.push_back (graph[i][tokeep[j]]);
@@ -1140,7 +1140,7 @@ namespace internal
       if (it->info().empty())
         output.insert (it);
                        
-      std::vector<std::set<std::size_t> > section_incident_planes (it->info().size());
+      std::vector<cpp11::unordered_set<std::size_t> > section_incident_planes (it->info().size());
       
       typename SMCDT::Face_circulator circ = output.incident_faces(it);
       typename SMCDT::Face_circulator start = circ;
@@ -1210,8 +1210,8 @@ namespace internal
       if (mesh.is_constrained(*it))
         todo.push (*it);
 
+    std::vector<typename SMCDT::Edge> incident;
 
-    // TO FIX: infinite loop
     while (!todo.empty())
     {
       int idx = todo.front().second;
@@ -1269,33 +1269,29 @@ namespace internal
         
         double we = mesh.plane_weights()[fe->info().plane_index];
         double wo = mesh.plane_weights()[fo->info().plane_index];
+        double ze, zo;
         if (chosen == va)
         {
-          z = (we * pea.z() + wo * poa.z()) / (we + wo);
-          typename GeomTraits::Point_3 new_point (pea.x(), pea.y(), z);
-
-          for (std::size_t i = 0; i < va->info().size(); ++ i)
-          {
-            typename GeomTraits::Point_3& pia = mesh.point (va, i);
-            if (pia.z() == pea.z() || pia.z() == poa.z())
-              pia = new_point;
-          }
+          ze = pea.z();
+          zo = poa.z();
         }
         else
         {
-          z = (we * peb.z() + wo * pob.z()) / (we + wo);
-          typename GeomTraits::Point_3 new_point (peb.x(), peb.y(), z);
+          ze = peb.z();
+          zo = pob.z();
+        }
+        z = (we * ze + wo * zo) / (we + wo);
+        typename GeomTraits::Point_3 new_point (chosen->point().x(), chosen->point().y(), z);
 
-          for (std::size_t i = 0; i < vb->info().size(); ++ i)
-          {
-            typename GeomTraits::Point_3& pib = mesh.point (vb, i);
-            if (pib.z() == peb.z() || pib.z() == pob.z())
-              pib = new_point;
-          }
+        for (std::size_t i = 0; i < chosen->info().size(); ++ i)
+        {
+          typename GeomTraits::Point_3& pi = mesh.point (chosen, i);
+          if (pi.z() == ze || pi.z() == zo)
+            pi = new_point;
         }
 
         // Recheck neighbor edges
-        std::vector<typename SMCDT::Edge> incident;
+        incident.clear();
         mesh.incident_constraints (chosen, std::back_inserter (incident));
         if (incident.size() == 1)
           continue;
@@ -1461,7 +1457,7 @@ namespace internal
       if (mesh.is_ignored(it) || mesh.has_mesh_face(it))
         continue;
 
-      std::set<typename SMCDT::Face_handle> done;
+      cpp11::unordered_set<typename SMCDT::Face_handle> done;
       
       std::queue<typename SMCDT::Face_handle> todo;
       todo.push(it);
@@ -1546,7 +1542,7 @@ namespace internal
       index_container_former_ring.push_back(faces[fi]);
       index_container_current_ring.clear();
 
-      std::set<typename SMCDT::Face_handle> current_overlaps;
+      cpp11::unordered_set<typename SMCDT::Face_handle> current_overlaps;
       
       std::size_t size_latest_pca = 1;
     
@@ -1674,7 +1670,8 @@ namespace internal
           mesh.make_ridge_buffer(faces_with_plane[i]);
     }
 
-    std::set<typename SMCDT::Face_handle> done;
+    cpp11::unordered_set<typename SMCDT::Face_handle> done;
+    std::vector<typename SMCDT::Face_handle> region;
     
     for (typename SMCDT::Finite_faces_iterator it = mesh.finite_faces_begin();
          it != mesh.finite_faces_end(); ++ it)
@@ -1683,7 +1680,7 @@ namespace internal
           !it->info().has_plane())
         continue;
 
-      std::vector<typename SMCDT::Face_handle> region;
+      region.clear();
       std::queue<typename SMCDT::Face_handle> todo;
       todo.push(it);
       while (!todo.empty())
@@ -1746,7 +1743,7 @@ namespace internal
         continue;
       typename SMCDT::Vertex_index vi = mesh.mesh_vertex(it);
 
-      std::set<std::size_t> incident_planes;
+      cpp11::unordered_set<std::size_t> incident_planes;
       typename SMCDT::Line_3 line (mesh.point(vi), typename GeomTraits::Vector_3 (0., 0., 1.));
 
       typename SMCDT::Face_circulator circ = mesh.incident_faces(it), start = circ;
@@ -1771,7 +1768,7 @@ namespace internal
       }
       else if (incident_planes.size() == 2)
       {
-        typename std::set<std::size_t>::iterator sit = incident_planes.begin();
+        typename cpp11::unordered_set<std::size_t>::iterator sit = incident_planes.begin();
         ++ sit;
         typename GeomTraits::Line_3 line;
         if (mesh.intersection_line_of_2_planes (*(incident_planes.begin()), *sit, line))
@@ -1802,7 +1799,7 @@ namespace internal
         continue;
       typename SMCDT::Vertex_index vi = mesh.mesh_vertex(it);
 
-      std::set<std::size_t> incident_planes;
+      cpp11::unordered_set<std::size_t> incident_planes;
       typename SMCDT::Line_3 line (mesh.point(vi), typename GeomTraits::Vector_3 (0., 0., 1.));
 
       typename SMCDT::Face_circulator circ = mesh.incident_faces(it), start = circ;
@@ -2737,7 +2734,7 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 
   TOP_VIEW_CERR << std::endl << "-- All done in " << ttot.time() << " second(s)" << std::endl;
 
-  output_mesh.DEBUG_dump_edges();
+
 #ifdef TOP_VIEW_LOG
   output_mesh.DEBUG_dump_ply("debug4.ply");
 #endif
@@ -2745,7 +2742,7 @@ void top_view_surface_reconstruction (PointInputIterator begin,
 #ifndef TOP_VIEW_FIX_DUPLICATE_VERTICES
   output_mesh.stitch_borders();
 #endif
-  
+  output_mesh.DEBUG_dump_edges();  
 }
 
 

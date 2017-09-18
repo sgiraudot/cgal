@@ -17,6 +17,8 @@
 
 #include <CGAL/Random.h>
 
+#include <CGAL/unordered.h>
+
 #include <fstream>
 #include <queue>
 
@@ -612,8 +614,8 @@ public:
     }
     while (circ != start);
     
-    std::set<Face_handle> done;
-    std::set<Point_3> vertex_done;
+    cpp11::unordered_set<Face_handle> done;
+    cpp11::unordered_set<Point_3> vertex_done;
     
     while (!todo.empty())
     {
@@ -827,7 +829,7 @@ public:
     }
     while (circ != start);
     
-    std::set<Face_handle> done;
+    cpp11::unordered_set<Face_handle> done;
     
     while (!todo.empty())
     {
@@ -1100,7 +1102,7 @@ public:
       if (m_nvv_map[vi] == Vertex_index())
         continue;
       
-      std::set<Vertex_index> seen;
+      cpp11::unordered_set<Vertex_index> seen;
       Vertex_index circ = vi;
       do
       {

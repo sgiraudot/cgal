@@ -457,9 +457,10 @@ public:
       
     std::size_t iterations = 0;
 
-    std::set<Face_handle> done;
+    cpp11::unordered_set<Face_handle> done;
     done.insert(fh);
       
+    std::vector<Face_handle> next_path;
     while (!todo.empty())
     {
       Face_handle current = todo.begin()->current;
@@ -520,7 +521,7 @@ public:
               first_buffer = int(i);
             else
             {
-              std::vector<Face_handle> next_path;
+              next_path.clear();
               get_n_next_faces (current->neighbor(first_buffer), current, 5,
                                 std::back_inserter (next_path));
                                 
@@ -573,7 +574,7 @@ public:
       
     std::size_t iterations = 0;
 
-    std::set<Face_handle> done;
+    cpp11::unordered_set<Face_handle> done;
     done.insert(fh);
       
     while (!todo.empty())
