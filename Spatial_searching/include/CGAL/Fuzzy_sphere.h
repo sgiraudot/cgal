@@ -35,89 +35,112 @@
 namespace CGAL {
 
 namespace internal{
-
+    
 template <class SearchTraits,class Point_d>
-class Fuzzy_sphere_impl
-{
+class Fuzzy_sphere_impl{
+  SearchTraits traits;
 public:
+
   typedef typename SearchTraits::FT FT;
   typedef typename SearchTraits::Dimension Dimension;
-
 private:
-  SearchTraits traits;
 
   Point_d c;
-  FT sq_radius;
-  FT sq_inner_radius;
-  FT sq_outer_radius;
+  FT r;
+  FT eps;
 
 public:
+
+
   // default constructor
   Fuzzy_sphere_impl(const SearchTraits& traits_=SearchTraits()):traits(traits_) {}
+		
 
-  // constructor
-  Fuzzy_sphere_impl(const Point_d& center, FT r, FT eps=FT(0),
-                    const SearchTraits& traits_ = SearchTraits())
-    : traits(traits_), c(center), sq_radius(r*r)
-  {
-    CGAL_precondition(r >= 0);
-    CGAL_precondition(eps >= 0);
-
-    sq_inner_radius = (eps > r) ? FT(-1) : (r - eps) * (r - eps);
-    sq_outer_radius = (r + eps) * (r + eps);
+	// constructor
+	Fuzzy_sphere_impl(const Point_d& center, FT radius, FT epsilon=FT(0),const SearchTraits& traits_=SearchTraits()) : 
+    traits(traits_),c(center), r(radius), eps(epsilon) 
+	{ 	// avoid problems if eps > r
+		if (eps>r) eps=r; 
+	}
+        	
+  bool contains(const typename SearchTraits::Point_d& p) const {
+		// test whether the distance between c and p is less than the radius
+		FT squared_radius = r*r;
+		FT distance=FT(0);
+		typename SearchTraits::Construct_cartesian_const_iterator_d construct_it=
+      traits.construct_cartesian_const_iterator_d_object();
+    typename SearchTraits::Cartesian_const_iterator_d cit = construct_it(c),
+      pit = construct_it(p),
+      end = construct_it(c, 0);
+		for (; cit != end
+           && (distance < squared_radius); ++cit, ++pit) {
+		  distance += 
+        ((*cit)-(*pit))*((*cit)-(*pit));
+		}
+		
+		return (distance < squared_radius); 
   }
 
-  bool contains(const typename SearchTraits::Point_d& p) const {
+  template <typename Coord_iterator>
+  bool contains_point_given_as_coordinates(Coord_iterator it_coord_begin, Coord_iterator /*unused*/) const {
     // test whether the distance between c and p is less than the radius
-    FT distance=FT(0);
-    typename SearchTraits::Construct_cartesian_const_iterator_d construct_it=
-        traits.construct_cartesian_const_iterator_d_object();
+    FT squared_radius = r*r;
+    FT distance = FT(0);
+    typename SearchTraits::Construct_cartesian_const_iterator_d construct_it =
+      traits.construct_cartesian_const_iterator_d_object();
     typename SearchTraits::Cartesian_const_iterator_d cit = construct_it(c),
-        pit = construct_it(p), end = construct_it(c, 0);
-    for (; cit != end && (distance <= sq_radius); ++cit, ++pit) {
-      distance += CGAL::square((*cit)-(*pit));
-    }
+      end = construct_it(c, 0);
 
-    return (distance <= sq_radius);
+    for (; cit != end && (distance < squared_radius); ++cit, ++it_coord_begin)
+      distance += ((*cit) - (*it_coord_begin))*((*cit) - (*it_coord_begin));
+
+    return (distance < squared_radius);
   }
 
   bool inner_range_intersects(const Kd_tree_rectangle<FT,Dimension>& rectangle) const {
-    // test whether the sphere with radius (r-eps) intersects 'rectangle', i.e.
+    // test whether the interior of a sphere
+    // with radius (r-eps) intersects 'rectangle', i.e.
     // if the minimal distance of c to 'rectangle' is less than r-eps
     FT distance = FT(0);
+    FT squared_radius = (r-eps)*(r-eps);
     typename SearchTraits::Construct_cartesian_const_iterator_d construct_it=
-        traits.construct_cartesian_const_iterator_d_object();
+      traits.construct_cartesian_const_iterator_d_object();
     typename SearchTraits::Cartesian_const_iterator_d cit = construct_it(c),
-                                                      end = construct_it(c, 0);
-    for (int i = 0; cit != end && (distance <= sq_inner_radius); ++cit, ++i) {
-      if ((*cit) < rectangle.min_coord(i))
-        distance += CGAL::square(rectangle.min_coord(i)-(*cit));
-      else if ((*cit) > rectangle.max_coord(i))
-        distance += CGAL::square((*cit)-rectangle.max_coord(i));
-    }
+      end = construct_it(c, 0);
+		for (int i = 0; cit != end && (distance < squared_radius); ++cit, ++i) {
+			if ((*cit) < rectangle.min_coord(i))
+				distance += 
+          (rectangle.min_coord(i)-(*cit))*(rectangle.min_coord(i)-(*cit));
+			if ((*cit) > rectangle.max_coord(i))
+				distance += 
+          ((*cit)-rectangle.max_coord(i))*((*cit)-rectangle.max_coord(i));
+		}
+		
+		return (distance < squared_radius);
+	}
 
-    return (distance <= sq_inner_radius);
-  }
 
-
-  bool outer_range_contains(const Kd_tree_rectangle<FT,Dimension>& rectangle) const {
-    // test whether the sphere with radius (r+eps) contains 'rectangle',
-    // i.e. if the maximal distance of c to the boundary of 'rectangle'
+  bool outer_range_contains(const Kd_tree_rectangle<FT,Dimension>& rectangle) const { 
+    // test whether the interior of a sphere
+    // with radius (r+eps) is contained by 'rectangle', i.e.
+    // if the maximal distance of c to the boundary of 'rectangle'
     // is less than r+eps
     FT distance=FT(0);
+    FT squared_radius = (r+eps)*(r+eps);	
     typename SearchTraits::Construct_cartesian_const_iterator_d construct_it=
-        traits.construct_cartesian_const_iterator_d_object();
+      traits.construct_cartesian_const_iterator_d_object();
     typename SearchTraits::Cartesian_const_iterator_d cit = construct_it(c),
-                                                      end = construct_it(c, 0);
-    for (int i = 0; cit != end && (distance <= sq_outer_radius) ; ++cit,++i) {
+      end = construct_it(c, 0);
+    for (int i = 0; cit != end && (distance < squared_radius) ; ++cit,++i) {
       if ((*cit) <= (rectangle.min_coord(i)+rectangle.max_coord(i))/FT(2))
-        distance += CGAL::square(rectangle.max_coord(i)-(*cit));
+        distance += 
+          (rectangle.max_coord(i)-(*cit))*(rectangle.max_coord(i)-(*cit));
       else
-        distance += CGAL::square((*cit)-rectangle.min_coord(i));
-    }
-
-    return (distance <= sq_outer_radius);
-  }
+        distance += ((*cit)-rectangle.min_coord(i))*((*cit)-rectangle.min_coord(i));
+		}
+		
+		return (distance < squared_radius);
+	}
 }; // class Fuzzy_sphere_impl
 
 }
