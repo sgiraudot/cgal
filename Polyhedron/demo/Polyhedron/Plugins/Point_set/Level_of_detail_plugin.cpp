@@ -591,11 +591,11 @@ void Polyhedron_demo_level_of_detail_plugin::on_actionLOD_triggered()
     std::cerr << "1 ";
     std::size_t first_wall_facet;
     std::tie (first_building_facet, first_wall_facet, first_vegetation_facet)
-      = lod.output_lod1_to_triangle_soup
+      = lod.output_lod1_to_polygon_soup
       (std::back_inserter (vertices),
-       boost::make_function_output_iterator (array_to_vector(polygons)));
+       std::back_inserter(polygons));
     std::cerr << "2 ";
-    
+
     // Fill colors according to facet type
     for (std::size_t i = 0; i < first_building_facet; ++ i)
       fcolors.push_back (CGAL::Color(186, 189, 182));
@@ -606,9 +606,32 @@ void Polyhedron_demo_level_of_detail_plugin::on_actionLOD_triggered()
     for (std::size_t i = first_vegetation_facet; i < polygons.size(); ++ i)
       fcolors.push_back (CGAL::Color(138, 226, 52));
     
+    // to remove
+    {
+      std::ofstream f("debug.off");
+      f.precision(18);
+      f << "OFF " << std::endl << vertices.size() << " " << polygons.size() << " 0" << std::endl;
+      for (std::size_t i = 0; i < vertices.size(); ++ i)
+        f << vertices[i] << std::endl;
+      for (std::size_t i = 0; i < polygons.size(); ++ i)
+      {
+        f << polygons[i].size();
+        for (std::size_t j = 0; j < polygons[i].size(); ++ j)
+          f << " " << polygons[i][j];
+        f << std::endl;
+        // if (i < first_building_facet)
+        //   f << " 186 189 182" << std::endl;
+        // else if (i < first_wall_facet)
+        //   f << " 245 121 0" << std::endl;
+        // else if (i < first_vegetation_facet)
+        //   f << " 77 131 186" << std::endl;
+        // else
+        //   f << " 138 226 52" << std::endl;
+      }
+    }
+    
     lod1_item->load (vertices, polygons, fcolors, vcolors);
     lod1_item->setName(tr("%1 (LOD1)").arg(item->name()));
-    lod1_item->setRenderingMode(Flat);
     scene->addItem(lod1_item);
     item->setVisible(false);
 #endif

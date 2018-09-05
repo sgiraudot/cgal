@@ -21,6 +21,7 @@
 
 #include <CGAL/Level_of_detail/internal/Triangulations/Constrained_triangulation_creator.h>
 #include <CGAL/Level_of_detail/internal/Triangulations/Triangulation_ground_refiner.h>
+#include <CGAL/Level_of_detail/internal/Triangulations/Triangulation_megafacet_creator.h>
 
 #include <CGAL/Level_of_detail/internal/Shape_detection/Points_based_region_growing_2.h>
 
@@ -886,8 +887,8 @@ namespace CGAL {
       template <typename VerticesOutputIterator,
                 typename PolygonOutputIterator>
       std::tuple<std::size_t, std::size_t, std::size_t>
-      output_lod1_to_triangle_soup (VerticesOutputIterator vertices,
-                                    PolygonOutputIterator polygons) const
+      output_lod1_to_polygon_soup (VerticesOutputIterator vertices,
+                                   PolygonOutputIterator polygons) const
       {
         std::vector<typename Triangulation::Face_handle> ground_faces;
         std::vector<typename Triangulation::Face_handle> roof_faces;
@@ -897,6 +898,10 @@ namespace CGAL {
                                           ground_faces, roof_faces,
                                           vegetation_faces);
 
+        Triangulation_megafacet_creator<Kernel, Filtered_range, PointMap, Triangulation>
+          megafacet_creator (m_data_structure.trees(), m_data_structure.buildings(),
+                             m_data_structure.triangulation());
+
         internal::Indexer<Point_3> indexer;
 
         std::tuple<std::size_t, std::size_t, std::size_t> out;
@@ -905,7 +910,7 @@ namespace CGAL {
         
         for (std::size_t i = 0; i < ground_faces.size(); ++ i)
         {
-          cpp11::array<std::size_t, 3> polygon;
+          std::vector<std::size_t> polygon(3);
 
           for (std::size_t j = 0; j < 3; ++ j)
           {
@@ -918,22 +923,24 @@ namespace CGAL {
 
             polygon[j] = idx;
           }
+
           *(polygons ++) = polygon;
           ++ nb_polygons;
+
         }
 
         get<0>(out) = nb_polygons;
 
-        for (std::size_t i = 0; i < roof_faces.size(); ++ i)
+        for (std::size_t i = 0; i < megafacet_creator.number_of_buildings(); ++ i)
         {
-          cpp11::array<std::size_t, 3> polygon;
+          std::vector<std::size_t> polygon(megafacet_creator.building(i).size());
 
-          for (std::size_t j = 0; j < 3; ++ j)
+          for (std::size_t j = 0; j < megafacet_creator.building(i).size(); ++ j)
           {
-            std::size_t idx = indexer(internal::point_3<Point_3>(roof_faces[i], j));
+            std::size_t idx = indexer(megafacet_creator.building(i)[j]);
             if (idx == nb_vertices)
             {
-              *(vertices ++) = internal::point_3<Point_3>(roof_faces[i], j);
+              *(vertices ++) = megafacet_creator.building(i)[j];
               ++ nb_vertices;
             }
 
@@ -941,6 +948,7 @@ namespace CGAL {
           }
           *(polygons ++) = polygon;
           ++ nb_polygons;
+
         }
 
         get<1>(out) = nb_polygons;
@@ -975,55 +983,38 @@ namespace CGAL {
           Point_3 p0b = internal::point_3<Point_3>(f0, f0->index(vb));
           if (p0b != p1b) points.push_back (p0b);
           
-          if (points.size() > 2)
-          {
-            cpp11::array<std::size_t, 3> polygon;
+          if (points.size() < 3)
+            continue;
             
-            for (std::size_t j = 0; j < 3; ++ j)
-            {
-              std::size_t idx = indexer(points[j]);
-              if (idx == nb_vertices)
-              {
-                *(vertices ++) = points[j];
-                ++ nb_vertices;
-              }
-              polygon[j] = idx;
-            }
-            *(polygons ++) = polygon;
-            ++ nb_polygons;
-          }
-          if (points.size() == 4)
+          std::vector<std::size_t> polygon(points.size());
+
+          for (std::size_t j = 0; j < points.size(); ++ j)
           {
-            cpp11::array<std::size_t, 3> polygon;
-            
-            for (std::size_t j = 2; j < 5; ++ j)
+            std::size_t idx = indexer(points[j]);
+            if (idx == nb_vertices)
             {
-              std::size_t idx = indexer(points[j % 4]);
-              if (idx == nb_vertices)
-              {
-                *(vertices ++) = points[j % 4];
-                ++ nb_vertices;
-              }
-              polygon[j-2] = idx;
+              *(vertices ++) = points[j];
+              ++ nb_vertices;
             }
-            *(polygons ++) = polygon;
-            ++ nb_polygons;
+            polygon[j] = idx;
           }
+          *(polygons ++) = polygon;
+          ++ nb_polygons;
         }
 
         get<2>(out) = nb_polygons;
 
         // Trees
-        for (std::size_t i = 0; i < vegetation_faces.size(); ++ i)
+        for (std::size_t i = 0; i < megafacet_creator.number_of_trees(); ++ i)
         {
-          cpp11::array<std::size_t, 3> polygon;
+          std::vector<std::size_t> polygon(megafacet_creator.tree(i).size());
 
-          for (std::size_t j = 0; j < 3; ++ j)
+          for (std::size_t j = 0; j < megafacet_creator.tree(i).size(); ++ j)
           {
-            std::size_t idx = indexer(internal::point_3<Point_3>(vegetation_faces[i], j));
+            std::size_t idx = indexer(megafacet_creator.tree(i)[j]);
             if (idx == nb_vertices)
             {
-              *(vertices ++) = internal::point_3<Point_3> (vegetation_faces[i], j);
+              *(vertices ++) = megafacet_creator.tree(i)[j];
               ++ nb_vertices;
             }
 
@@ -1063,38 +1054,22 @@ namespace CGAL {
           Point_3 p0b = internal::point_3<Point_3>(f0, f0->index(vb));
           if (p0b != p1b) points.push_back (p0b);
           
-          if (points.size() > 2)
-          {
-            cpp11::array<std::size_t, 3> polygon;
+          if (points.size() < 3)
+            continue;
             
-            for (std::size_t j = 0; j < 3; ++ j)
-            {
-              std::size_t idx = indexer(points[j]);
-              if (idx == nb_vertices)
-              {
-                *(vertices ++) = points[j];
-                ++ nb_vertices;
-              }
-              polygon[j] = idx;
-            }
-            *(polygons ++) = polygon;
-          }
-          if (points.size() == 4)
-          {
-            cpp11::array<std::size_t, 3> polygon;
+          std::vector<std::size_t> polygon(points.size());
             
-            for (std::size_t j = 2; j < 5; ++ j)
+          for (std::size_t j = 0; j < points.size(); ++ j)
+          {
+            std::size_t idx = indexer(points[j]);
+            if (idx == nb_vertices)
             {
-              std::size_t idx = indexer(points[j % 4]);
-              if (idx == nb_vertices)
-              {
-                *(vertices ++) = points[j % 4];
-                ++ nb_vertices;
-              }
-              polygon[j-2] = idx;
+              *(vertices ++) = points[j];
+              ++ nb_vertices;
             }
-            *(polygons ++) = polygon;
+            polygon[j] = idx;
           }
+          *(polygons ++) = polygon;
         }
 
         return out;
