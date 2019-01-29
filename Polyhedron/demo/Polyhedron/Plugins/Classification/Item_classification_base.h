@@ -10,15 +10,36 @@
 
 #include <CGAL/Classification/Feature_set.h>
 #include <CGAL/Classification/Label_set.h>
-#include <CGAL/Classification/Sum_of_weighted_features_classifier.h>
+
+
 #include <CGAL/Classification/ETHZ/Random_forest_classifier.h>
+#include <CGAL/Classification/Sum_of_weighted_features_classifier.h>
+#include <CGAL/Classification/K_means_classifier.h>
+
+#ifdef CGAL_LINKED_WITH_TENSORFLOW
+#  include <CGAL/Classification/TensorFlow/Neural_network_classifier.h>
+#endif
 
 #ifdef CGAL_LINKED_WITH_OPENCV
-#include <CGAL/Classification/OpenCV/Random_forest_classifier.h>
+#  include <CGAL/Classification/OpenCV/Random_forest_classifier.h>
 #endif
-#ifdef CGAL_LINKED_WITH_TENSORFLOW
-#include <CGAL/Classification/TensorFlow/Neural_network_classifier.h>
-#endif
+
+#define CGAL_CLASSIFICATION_ETHZ_ID "Random Forest (ETHZ)"
+#define CGAL_CLASSIFICATION_ETHZ_NUMBER 0
+
+#define CGAL_CLASSIFICATION_TENSORFLOW_ID "Neural Network (TensorFlow)"
+#define CGAL_CLASSIFICATION_TENSORFLOW_NUMBER 1
+
+#define CGAL_CLASSIFICATION_OPENCV_ID "Random Forest (OpenCV)"
+#define CGAL_CLASSIFICATION_OPENCV_NUMBER 2
+
+#define CGAL_CLASSIFICATION_SOWF_ID "Sum of Weighted Features"
+#define CGAL_CLASSIFICATION_SOWF_NUMBER 3
+
+#define CGAL_CLASSIFICATION_KMEANS_ID "K-Means"
+#define CGAL_CLASSIFICATION_KMEANS_NUMBER 4
+
+
 
 class Item_classification_base
 {
@@ -28,6 +49,7 @@ public:
   typedef CGAL::Classification::Label_set   Label_set;
   typedef CGAL::Classification::Feature_set Feature_set;
   typedef CGAL::Classification::Sum_of_weighted_features_classifier Sum_of_weighted_features;
+  typedef CGAL::Classification::K_means_classifier K_means;
   typedef CGAL::Classification::ETHZ::Random_forest_classifier ETHZ_random_forest;
 
 #ifdef CGAL_LINKED_WITH_OPENCV
@@ -85,6 +107,9 @@ public:
     delete m_sowf;
     m_sowf = new Sum_of_weighted_features (m_labels, m_features);
 
+    delete m_kmeans;
+    m_kmeans = new K_means (m_labels, m_features);
+
     delete m_ethz;
     m_ethz = new ETHZ_random_forest (m_labels, m_features);
 
@@ -108,6 +133,9 @@ public:
     delete m_sowf;
     m_sowf = new Sum_of_weighted_features (m_labels, m_features);
 
+    delete m_kmeans;
+    m_kmeans = new K_means (m_labels, m_features);
+
     delete m_ethz;
     m_ethz = new ETHZ_random_forest (m_labels, m_features);
 
@@ -129,6 +157,9 @@ public:
 
     delete m_sowf;
     m_sowf = new Sum_of_weighted_features (m_labels, m_features);
+
+    delete m_kmeans;
+    m_kmeans = new K_means (m_labels, m_features);
 
     delete m_ethz;
     m_ethz = new ETHZ_random_forest (m_labels, m_features);
@@ -172,23 +203,25 @@ public:
         return;
       }
 
-    if (classifier == 0)
+    if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER)
     {
       std::ofstream f (filename);
       m_sowf->save_configuration (f);
     }
-    else if (classifier == 1)
+    else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER)
     {
+      std::cerr << "D ";
       std::ofstream f (filename, std::ios_base::out | std::ios_base::binary);
       m_ethz->save_configuration (f);
+      std::cerr << "E ";
     }
-    else if (classifier == 2)
+    else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER)
     {
 #ifdef CGAL_LINKED_WITH_OPENCV
       m_random_forest->save_configuration (filename);
 #endif
     }
-    else if (classifier == 3)
+    else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER)
     {
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
       std::ofstream f (filename);
@@ -204,25 +237,25 @@ public:
         return;
       }
 
-    if (classifier == 0)
+    if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER)
     {
       std::ifstream f (filename);
       m_sowf->load_configuration (f, true);
     }
-    else if (classifier == 1)
+    else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER)
     {
       if (m_ethz == NULL)
         m_ethz = new ETHZ_random_forest (m_labels, m_features);
       std::ifstream f (filename, std::ios_base::in | std::ios_base::binary);
       m_ethz->load_configuration (f);
     }
-    else if (classifier == 2)
+    else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER)
     {
 #ifdef CGAL_LINKED_WITH_OPENCV
       m_random_forest->load_configuration (filename);
 #endif
     }
-    else if (classifier == 3)
+    else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER)
     {
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
       if (m_neural_network == NULL)
@@ -297,6 +330,7 @@ protected:
   Feature_set m_features;
   std::vector<QColor> m_label_colors;
   Sum_of_weighted_features* m_sowf;
+  K_means* m_kmeans;
   ETHZ_random_forest* m_ethz;
 #ifdef CGAL_LINKED_WITH_OPENCV
   Random_forest* m_random_forest;

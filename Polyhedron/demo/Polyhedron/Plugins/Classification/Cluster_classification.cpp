@@ -240,6 +240,7 @@ Cluster_classification::Cluster_classification(Scene_points_with_normal_item* po
 #endif
 
   // Compute neighborhood
+#if 0
   typedef CGAL::Triangulation_vertex_base_with_info_3<int, Kernel>         Vb;
   typedef CGAL::Delaunay_triangulation_cell_base_3<Kernel>                 Cb;
   typedef CGAL::Triangulation_data_structure_3<Vb, Cb>                     Tds;
@@ -279,7 +280,7 @@ Cluster_classification::Cluster_classification(Scene_points_with_normal_item* po
     m_clusters[std::size_t(it->first)].neighbors.push_back (std::size_t(it->second));
     m_clusters[std::size_t(it->second)].neighbors.push_back (std::size_t(it->first));
   }
-
+#endif
 }
 
 
@@ -753,7 +754,7 @@ void Cluster_classification::add_remaining_point_set_properties_as_features(Feat
   
   for (std::size_t i = 0; i < prop.size(); ++ i)
   {
-    if (prop[i] == "index" ||
+   if (prop[i] == "index" ||
         prop[i] == "point" ||
         prop[i] == "normal" ||
         prop[i] == "echo" ||
@@ -761,6 +762,7 @@ void Cluster_classification::add_remaining_point_set_properties_as_features(Feat
         prop[i] == "training" ||
         prop[i] == "label" ||
         prop[i] == "classification" ||
+        prop[i] == "scan_direction_flag" ||
         prop[i] == "real_color" ||
         prop[i] == "shape" ||
         prop[i] == "red" || prop[i] == "green" || prop[i] == "blue" ||
@@ -822,14 +824,14 @@ void Cluster_classification::train(int classifier, const QMultipleInputDialog& d
   
   std::vector<int> indices (m_clusters.size(), -1);
 
-  if (classifier == 0)
+  if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER)
   {
     m_sowf->train<Concurrency_tag>(training, dialog.get<QSpinBox>("trials")->value());
-    CGAL::Classification::classify<Concurrency_tag> (m_clusters,
-                                                     m_labels, *m_sowf,
-                                                     indices, m_label_probabilities);
+    CGAL::Classification::classify_detailed_output<Concurrency_tag> (m_clusters,
+                                                                     m_labels, *m_sowf,
+                                                                     indices, m_label_probabilities);
   }
-  else if (classifier == 1)
+  else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER)
   {
     if (m_ethz != NULL)
       delete m_ethz;
@@ -837,11 +839,11 @@ void Cluster_classification::train(int classifier, const QMultipleInputDialog& d
     m_ethz->train<Concurrency_tag>(training, true,
                                    dialog.get<QSpinBox>("num_trees")->value(),
                                    dialog.get<QSpinBox>("max_depth")->value());
-    CGAL::Classification::classify<Concurrency_tag> (m_clusters,
-                                                     m_labels, *m_ethz,
-                                                     indices, m_label_probabilities);
+    CGAL::Classification::classify_detailed_output<Concurrency_tag> (m_clusters,
+                                                                     m_labels, *m_ethz,
+                                                                     indices, m_label_probabilities);
   }
-  else if (classifier == 2)
+  else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER)
   {
 #ifdef CGAL_LINKED_WITH_OPENCV
     if (m_random_forest != NULL)
@@ -850,12 +852,12 @@ void Cluster_classification::train(int classifier, const QMultipleInputDialog& d
                                          dialog.get<QSpinBox>("max_depth")->value(), 5, 15,
                                          dialog.get<QSpinBox>("num_trees")->value());
     m_random_forest->train (training);
-    CGAL::Classification::classify<Concurrency_tag> (m_clusters,
-                                                     m_labels, *m_random_forest,
-                                                     indices, m_label_probabilities);
+    CGAL::Classification::classify_detailed_output<Concurrency_tag> (m_clusters,
+                                                                     m_labels, *m_random_forest,
+                                                                     indices, m_label_probabilities);
 #endif
   }
-  else if (classifier == 3)
+  else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER)
   {
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
     if (m_neural_network != NULL)
@@ -895,9 +897,9 @@ void Cluster_classification::train(int classifier, const QMultipleInputDialog& d
                              dialog.get<QSpinBox>("batch_size")->value(),
                              hidden_layers);
       
-    CGAL::Classification::classify<Concurrency_tag> (m_clusters,
-                                                     m_labels, *m_neural_network,
-                                                     indices, m_label_probabilities);
+    CGAL::Classification::classify_detailed_output<Concurrency_tag> (m_clusters,
+                                                                     m_labels, *m_neural_network,
+                                                                     indices, m_label_probabilities);
 #endif
   }
 
@@ -919,9 +921,9 @@ bool Cluster_classification::run (int method, int classifier,
   }
   reset_indices();
 
-  if (classifier == 0)
+  if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER)
     run (method, *m_sowf, subdivisions, smoothing);
-  else if (classifier == 1)
+  else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER)
   {
     if (m_ethz == NULL)
     {
@@ -930,7 +932,7 @@ bool Cluster_classification::run (int method, int classifier,
     }
     run (method, *m_ethz, subdivisions, smoothing);
   }
-  else if (classifier == 2)
+  else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER)
   {
 #ifdef CGAL_LINKED_WITH_OPENCV
     if (m_random_forest == NULL)
@@ -941,7 +943,7 @@ bool Cluster_classification::run (int method, int classifier,
     run (method, *m_random_forest, subdivisions, smoothing);
 #endif
   }
-  else if (classifier == 3)
+  else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER)
   {
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
     if (m_neural_network == NULL)

@@ -44,11 +44,6 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <CGAL/boost/graph/split_graph_into_polylines.h>
 
-#define CGAL_CLASSIFICATION_ETHZ_ID "Random Forest (ETHZ)"
-#define CGAL_CLASSIFICATION_TENSORFLOW_ID "Neural Network (TensorFlow)"
-#define CGAL_CLASSIFICATION_OPENCV_ID "Random Forest (OpenCV)"
-#define CGAL_CLASSIFICATION_SOWF_ID "Sum of Weighted Features"
-
 using namespace CGAL::Three;
 
 class Polyhedron_demo_classification_plugin :
@@ -544,13 +539,15 @@ public Q_SLOTS:
   int get_classifier ()
   {
     if (classifier->text() == QString(CGAL_CLASSIFICATION_ETHZ_ID))
-      return 1;
+      return CGAL_CLASSIFICATION_ETHZ_NUMBER;
     if (classifier->text() == QString(CGAL_CLASSIFICATION_TENSORFLOW_ID))
-      return 3;
+      return CGAL_CLASSIFICATION_TENSORFLOW_NUMBER;
     if (classifier->text() == QString(CGAL_CLASSIFICATION_OPENCV_ID))
-      return 2;
+      return CGAL_CLASSIFICATION_OPENCV_NUMBER;
     if (classifier->text() == QString(CGAL_CLASSIFICATION_SOWF_ID))
-      return 0;
+      return CGAL_CLASSIFICATION_SOWF_NUMBER;
+    if (classifier->text() == QString(CGAL_CLASSIFICATION_KMEANS_ID))
+      return CGAL_CLASSIFICATION_KMEANS_NUMBER;
 
     std::cerr << "Error: unknown classifier" << std::endl;
     return -1;
@@ -651,18 +648,18 @@ public Q_SLOTS:
     QString filename;
 
     int classifier = get_classifier();
-    if (classifier == 0) // Sum of Weighted Featuers
+    if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER) // Sum of Weighted Featuers
       filename = QFileDialog::getSaveFileName(mw,
                                               tr("Save classification configuration"),
                                               tr("%1 (CGAL classif config).xml").arg(classif->item()->name()),
                                               "CGAL classification configuration (*.xml);;");
-    else if (classifier == 1) // Random Forest (ETHZ)
+    else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER) // Random Forest (ETHZ)
       filename = QFileDialog::getSaveFileName(mw,
                                               tr("Save classification configuration"),
                                               tr("%1 (ETHZ random forest config).gz").arg(classif->item()->name()),
                                               "Compressed ETHZ random forest configuration (*.gz);;");
 #ifdef CGAL_LINKED_WITH_OPENCV
-    else if (classifier == 2) // Random Forest (OpenCV)
+    else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER) // Random Forest (OpenCV)
       filename = QFileDialog::getSaveFileName(mw,
                                               tr("Save classification configuration"),
                                               tr("%1 (OpenCV %2.%3 random forest config).xml")
@@ -674,7 +671,7 @@ public Q_SLOTS:
                                               .arg(CV_MINOR_VERSION));
 #endif
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
-    else if (classifier == 3) // Neural Network (TensorFlow)
+    else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER) // Neural Network (TensorFlow)
       filename = QFileDialog::getSaveFileName(mw,
                                               tr("Save classification configuration"),
                                               tr("%1 (CGAL Neural Network config).xml").arg(classif->item()->name()),
@@ -705,18 +702,18 @@ public Q_SLOTS:
     QString filename;
 
     int classifier = get_classifier();
-    if (classifier == 0) // SOWF
+    if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER) // Sum of Weighted Featuers
       filename = QFileDialog::getOpenFileName(mw,
                                               tr("Open CGAL classification configuration"),
                                               ".",
                                               "CGAL classification configuration (*.xml);;All Files (*)");
-    else if (classifier == 1) // ETHZ
+    else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER) // Random Forest (ETHZ)
       filename = QFileDialog::getOpenFileName(mw,
                                               tr("Open ETHZ random forest configuration"),
                                               ".",
                                               "Compressed ETHZ random forest configuration (*.gz);;All Files (*)");
 #ifdef CGAL_LINKED_WITH_OPENCV
-    else if (classifier == 2) // OpenCV
+    else if (classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER) // Random Forest (OpenCV)
       filename = QFileDialog::getOpenFileName(mw,
                                               tr("Open OpenCV %2.%3 random forest configuration")
                                               .arg(CV_MAJOR_VERSION)
@@ -727,7 +724,7 @@ public Q_SLOTS:
                                               .arg(CV_MINOR_VERSION));
 #endif
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
-    else if (classifier == 3) // TensorFlow
+    else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER) // Neural Network (TensorFlow)
       filename = QFileDialog::getOpenFileName(mw,
                                               tr("Open CGAL Neural Network classification configuration"),
                                               ".",
@@ -740,10 +737,8 @@ public Q_SLOTS:
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
     classif->load_config (filename.toStdString().c_str(), classifier);
-
     update_plugin_from_item(classif);
     run (classif, 0);
-    
     QApplication::restoreOverrideCursor();
     item_changed(classif->item());
   }
@@ -1303,6 +1298,8 @@ public Q_SLOTS:
     
     QRadioButton* sowf = dialog.add<QRadioButton> (CGAL_CLASSIFICATION_SOWF_ID);
 
+    QRadioButton* kmeans = dialog.add<QRadioButton> (CGAL_CLASSIFICATION_KMEANS_ID);
+
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
     QRadioButton* tensorflow = dialog.add<QRadioButton> (CGAL_CLASSIFICATION_TENSORFLOW_ID);
 #endif
@@ -1318,6 +1315,8 @@ public Q_SLOTS:
       classifier->setText(CGAL_CLASSIFICATION_ETHZ_ID);
     else if (sowf->isChecked())
       classifier->setText(CGAL_CLASSIFICATION_SOWF_ID);
+    else if (kmeans->isChecked())
+      classifier->setText(CGAL_CLASSIFICATION_KMEANS_ID);
 #ifdef CGAL_LINKED_WITH_TENSORFLOW
     else if (tensorflow->isChecked())
       classifier->setText(CGAL_CLASSIFICATION_TENSORFLOW_ID);
@@ -1349,13 +1348,14 @@ public Q_SLOTS:
     QMultipleInputDialog dialog ("Train Classifier", mw);
     
     int classifier = get_classifier();
-    if (classifier == 0) // SOWF
+    if (classifier == CGAL_CLASSIFICATION_SOWF_NUMBER) // Sum of Weighted Featuers
     {
       QSpinBox* trials = dialog.add<QSpinBox> ("Number of trials: ", "trials");
       trials->setRange (1, 99999);
       trials->setValue (800);
     }
-    else if (classifier == 1 || classifier == 2) // random forest
+    else if (classifier == CGAL_CLASSIFICATION_ETHZ_NUMBER
+             || classifier == CGAL_CLASSIFICATION_OPENCV_NUMBER) // random forest
     {
       QSpinBox* trees = dialog.add<QSpinBox> ("Number of trees: ", "num_trees");
       trees->setRange (1, 9999);
@@ -1364,7 +1364,7 @@ public Q_SLOTS:
       depth->setRange (1, 9999);
       depth->setValue (20);
     }
-    else if (classifier == 3) // neural network
+    else if (classifier == CGAL_CLASSIFICATION_TENSORFLOW_NUMBER) // Neural Network (TensorFlow)
     {
       QSpinBox* trials = dialog.add<QSpinBox> ("Number of trials: ", "trials");
       trials->setRange (1, 99999);
@@ -1381,7 +1381,8 @@ public Q_SLOTS:
       restart->setChecked (false);
     }
     
-    if (dialog.exec() != QDialog::Accepted)
+    if (classifier != CGAL_CLASSIFICATION_KMEANS_NUMBER
+        && dialog.exec() != QDialog::Accepted)
       return;
     
     QApplication::setOverrideCursor(Qt::WaitCursor);
