@@ -55,6 +55,7 @@ class Cluster
 {
 public:
 
+  typedef boost::uint32_t Index_type;
   typedef typename ItemMap::value_type Item;
 
   /// \cond SKIP_IN_MANUAL
@@ -66,14 +67,14 @@ public:
       return std::copy (cluster.neighbors.begin(), cluster.neighbors.end(), output);
     }
   };
-  std::vector<std::size_t> neighbors;
+  std::vector<Index_type> neighbors;
   /// \endcond
   
 private:
   const ItemRange* m_range;
   ItemMap m_item_map;
   
-  std::vector<std::size_t> m_inliers;
+  std::vector<Index_type> m_inliers;
   mutable CGAL::Bbox_3 m_bounding_box;
   int m_training;
   int m_label;
@@ -109,7 +110,7 @@ public:
   /*!
     \brief Inserts element of index `idx` in the cluster.
   */
-  void insert (std::size_t idx) { m_inliers.push_back (idx); }
+  void insert (std::size_t idx) { m_inliers.push_back (Index_type(idx)); }
 
   /// @}
 
@@ -124,13 +125,13 @@ public:
   /*!
     \brief Returns the index (in the input range) of the i^{th} element of the cluster.
   */
-  std::size_t index (std::size_t i) const { return m_inliers[i]; }
+  std::size_t index (std::size_t i) const { return std::size_t(m_inliers[i]); }
   
   /*!
     \brief Returns the i^{th} item of the cluster.
   */
   const Item& operator[] (std::size_t i) const
-  { return get (m_item_map, *(m_range->begin() + m_inliers[i])); }
+  { return get (m_item_map, *(m_range->begin() + std::size_t(m_inliers[i]))); }
 
   /*!
     \brief Returns the bounding box of the cluster.
