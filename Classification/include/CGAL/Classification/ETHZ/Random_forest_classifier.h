@@ -119,8 +119,19 @@ public:
   /// \cond SKIP_IN_MANUAL
   ~Random_forest_classifier ()
   {
+    clear();
+  }
+
+  void clear ()
+  {
     if (m_rfc != NULL)
       delete m_rfc;
+  }
+
+  void transfer_forest (Random_forest_classifier& other)
+  {
+    m_rfc = other.m_rfc;
+    other.m_rfc = NULL;
   }
   /// \endcond
   
