@@ -126,6 +126,7 @@ public:
   {
     if (m_rfc != NULL)
       delete m_rfc;
+    m_rfc = NULL;
   }
 
   void transfer_forest (Random_forest_classifier& other)
