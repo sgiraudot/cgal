@@ -162,6 +162,14 @@ public:
     t = NULL;
   }
 
+  void transfer (const Neural_network_classifier& other)
+  {
+    // In wait for a more efficient implementation
+    std::stringstream stream;
+    other.save_configuration(stream);
+    this->load_configuration(stream);
+  }
+  
   void compute_normalization_coefficients (const std::vector<std::size_t>& indices)
   {
 //#define DO_NOT_NORMALIZE_FEATURES
@@ -467,7 +475,7 @@ public:
     The output file is written in an XML format that is readable by
     the `load_configuration()` method.
   */
-  void save_configuration (std::ostream& output)
+  void save_configuration (std::ostream& output) const
   {
     boost::property_tree::ptree tree;
 

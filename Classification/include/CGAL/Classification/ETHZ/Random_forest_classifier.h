@@ -129,7 +129,7 @@ public:
     m_rfc = NULL;
   }
 
-  void transfer_forest (Random_forest_classifier& other)
+  void transfer (Random_forest_classifier& other)
   {
     m_rfc = other.m_rfc;
     other.m_rfc = NULL;
