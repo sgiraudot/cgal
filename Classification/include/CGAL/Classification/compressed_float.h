@@ -31,12 +31,12 @@ namespace Classification {
 #if defined(CGAL_CLASSIFICATION_DO_NOT_COMPRESS_FLOATS)
 typedef float compressed_float;
 
-inline float compress_float (const float& f, const float&, const float&)
+inline float compress_float (const float& f, const float& = 0.f, const float& = 1.f)
 {
   return f;
 }
 
-inline float decompress_float<float> (const float& t, const float&, const float&)
+inline float decompress_float (const float& t, const float& = 0.f, const float& = 1.f)
 {
   return t;
 }
