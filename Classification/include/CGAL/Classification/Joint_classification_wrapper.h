@@ -22,7 +22,12 @@ public:
   public:
     Joint_feature (Feature_handle feature, const std::vector<Pair>& neighborhood, bool self)
       : m_feature (feature), m_neighborhood (neighborhood), m_self (self)
-    { }
+    {
+      if (m_self)
+        this->set_name (feature->name() + std::string("_self"));
+      else
+        this->set_name (feature->name() + std::string("_other"));
+    }
 
     float value (std::size_t idx)
     {
@@ -39,17 +44,20 @@ public:
     const std::vector<Index_type>& m_neighborhood_index;
     std::size_t m_nb_labels;
     const Classifier& m_classifier;
+    bool m_complete;
 
   public:
 
     Joint_classifier (const std::vector<Pair>& neighborhood,
                       const std::vector<Index_type>& neighborhood_index,
                       std::size_t nb_labels,
-                      const Classifier& classifier)
+                      const Classifier& classifier,
+                      bool complete)
       : m_neighborhood (neighborhood)
       , m_neighborhood_index (neighborhood_index)
       , m_nb_labels (nb_labels)
       , m_classifier (classifier)
+      , m_complete (complete)
     { }
 
     void operator() (std::size_t item_index, std::vector<float>& out) const
@@ -63,12 +71,19 @@ public:
       {
         std::vector<float> local_out;
         m_classifier(i, local_out);
-        for (std::size_t j = 0; j < out.size(); ++ j)
-          out[j] += local_out[j] + local_out[j + m_nb_labels];
+        if (m_complete)
+          for (std::size_t j = 0; j < out.size(); ++ j)
+            for (std::size_t k = 0; k < m_nb_labels; ++ k)
+              out[j] += local_out[j * m_nb_labels + k];
+        else
+          for (std::size_t j = 0; j < out.size(); ++ j)
+            out[j] += local_out[j] + local_out[j + m_nb_labels];
       }
       for (std::size_t i = 0; i < out.size(); ++ i)
         out[i] /= (last - first);
     }
+
+    bool complete() const { return m_complete; }
 
     std::size_t first (std::size_t item_index) const
     {
@@ -91,10 +106,12 @@ private:
 
   std::vector<Pair> m_neighborhood;
   std::vector<Index_type> m_neighborhood_index;
-
+  
   Label_set m_labels;
   Feature_set m_features;
   std::vector<int> m_ground_truth;
+
+  bool m_complete;
   
 public:
 
@@ -102,7 +119,9 @@ public:
   Joint_classification_wrapper (const ItemRange& input,
                                 const ItemMap item_map,
                                 const NeighborQuery& neighbor_query,
+                                bool complete = false,
                                 std::size_t allocation_hint = 0)
+    : m_complete (complete)
   {
     std::vector<std::size_t> neighbors;
     Index_type idx = 0;
@@ -125,16 +144,28 @@ public:
   const Label_set& labels (const Label_set& l)
   {
     m_labels.clear();
-    for (std::size_t i = 0; i < l.size(); ++ i)
+
+    if (m_complete)
+      for (std::size_t i = 0; i < l.size(); ++ i)
+        for (std::size_t j = 0; j < l.size(); ++ j)
+        {
+          std::string lname = l[i]->name() + "_next_to_" + l[j]->name();
+          m_labels.add (lname.c_str());
+        }
+    else
     {
-      std::string lname = l[i]->name() + "_same";
-      m_labels.add (lname.c_str());
+      for (std::size_t i = 0; i < l.size(); ++ i)
+      {
+        std::string lname = l[i]->name() + "_same";
+        m_labels.add (lname.c_str());
+      }
+      for (std::size_t i = 0; i < l.size(); ++ i)
+      {
+        std::string lname = l[i]->name() + "_different";
+        m_labels.add (lname.c_str());
+      }
     }
-    for (std::size_t i = 0; i < l.size(); ++ i)
-    {
-      std::string lname = l[i]->name() + "_different";
-      m_labels.add (lname.c_str());
-    }
+
     return m_labels;
   }
 
@@ -151,19 +182,34 @@ public:
   template <typename LabelIndexRange>
   const std::vector<int>& ground_truth (const LabelIndexRange& gt)
   {
+    std::size_t label_size = m_labels.size() / 2;
+    if (m_complete)
+      label_size = std::sqrt (m_labels.size());
+    
     m_ground_truth.clear();
     m_ground_truth.reserve(m_neighborhood.size());
     for (std::size_t i = 0; i < gt.size(); ++ i)
     {
       std::size_t first = m_neighborhood_index[i];
       std::size_t last = m_neighborhood_index[i+1];
-      for (std::size_t j = first; j < last; ++ j)
-        if (int(gt[i]) == -1)
-          m_ground_truth.push_back (-1);
-        else if (gt[i] == gt[m_neighborhood[j].second])
-          m_ground_truth.push_back(gt[i]);
-        else
-          m_ground_truth.push_back(gt[i] + m_labels.size() / 2);
+      if (m_complete)
+      {
+        for (std::size_t j = first; j < last; ++ j)
+          if (int(gt[i]) == -1 || gt[m_neighborhood[j].second] == -1)
+            m_ground_truth.push_back (-1);
+          else 
+            m_ground_truth.push_back(gt[i] * label_size + gt[m_neighborhood[j].second]);
+      }
+      else
+      {
+        for (std::size_t j = first; j < last; ++ j)
+          if (int(gt[i]) == -1)
+            m_ground_truth.push_back (-1);
+          else if (gt[i] == gt[m_neighborhood[j].second])
+            m_ground_truth.push_back(gt[i]);
+          else
+            m_ground_truth.push_back(gt[i] + label_size);
+      }
     }
     return m_ground_truth;
   }
@@ -171,7 +217,10 @@ public:
   template <typename Classifier>
   Joint_classifier<Classifier> classifier (const Classifier& classifier)
   {
-    return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index, m_labels.size() / 2, classifier);
+    if (m_complete)
+      return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index, std::sqrt(m_labels.size()), classifier, m_complete);
+
+    return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index, m_labels.size() / 2, classifier, m_complete);
   }
 
   unspecified_type graphcut_neighbor_query() const
@@ -189,10 +238,11 @@ namespace internal {
             typename LabelIndexRange>
   class Classify_functor_joint
   {
+    typedef Joint_classification_wrapper::Joint_classifier<Classifier> Joint_classifier;
     const ItemRange& m_input;
     ItemMap m_item_map;
     const Label_set& m_labels;
-    const Classifier& m_classifier;
+    const Joint_classifier& m_classifier;
     float m_strength;
     const std::vector<std::vector<std::size_t> >& m_indices;
     const std::vector<std::pair<std::size_t, std::size_t> >& m_input_to_indices;
@@ -209,7 +259,7 @@ namespace internal {
     Classify_functor_joint (const ItemRange& input,
                             ItemMap item_map,
                             const Label_set& labels,
-                            const Classifier& classifier,
+                            const Joint_classifier& classifier,
                             float strength,
                             const std::vector<std::vector<std::size_t> >& indices,
                             const std::vector<std::pair<std::size_t, std::size_t> >& input_to_indices,
@@ -255,8 +305,13 @@ namespace internal {
           
           m_classifier.base()(i, values_local);
           
-          for (std::size_t k = 0; k < values.size(); ++ k)
-            values[k] += values_local[k] + values_local[k + values.size()];
+          if (m_classifier.complete())
+            for (std::size_t k = 0; k < values.size(); ++ k)
+              for (std::size_t l = 0; l < m_labels.size(); ++ l)
+                values[k] += values_local[k * m_labels.size() + l];
+          else
+            for (std::size_t k = 0; k < values.size(); ++ k)
+              values[k] += values_local[k] + values_local[k + values.size()];
           
           if (sub == m_input_to_indices[neighbor_s].first
               && j != m_input_to_indices[neighbor_s].second)
@@ -264,9 +319,13 @@ namespace internal {
             edges.push_back (std::make_pair (j, m_input_to_indices[neighbor_s].second));
 
             float weight = 0.f;
-            for (std::size_t k = 0; k < m_labels.size(); ++ k)
-              weight += values_local[k];
-            
+            if (m_classifier.complete())
+              for (std::size_t k = 0; k < m_labels.size(); ++ k)
+                weight += values_local[k * m_labels.size() + k];
+            else
+              for (std::size_t k = 0; k < m_labels.size(); ++ k)
+                weight += values_local[k];
+
             edge_weights.push_back (weight * m_strength);
           }
         }
@@ -409,7 +468,7 @@ namespace internal {
         }
     }
 
-    internal::Classify_functor_joint<ItemRange, ItemMap, Joint_classification_wrapper::Joint_classifier<Classifier>, LabelIndexRange>
+    internal::Classify_functor_joint<ItemRange, ItemMap, Classifier, LabelIndexRange>
       f (input, item_map, labels, classifier, strength, indices, input_to_indices, output);
     
 #ifndef CGAL_LINKED_WITH_TBB
