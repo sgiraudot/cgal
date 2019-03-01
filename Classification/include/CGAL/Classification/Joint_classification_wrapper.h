@@ -297,6 +297,9 @@ namespace internal {
         std::size_t first = m_classifier.first(s);
         std::size_t last = m_classifier.last(s);
         
+        if (first == last)
+          continue;
+        
         for (std::size_t i = first; i < last; ++ i)
         {
           std::size_t neighbor_s = m_classifier.neighbor(i);
