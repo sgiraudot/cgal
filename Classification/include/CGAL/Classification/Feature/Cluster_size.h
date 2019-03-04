@@ -25,6 +25,7 @@
 
 #include <vector>
 #include <CGAL/Classification/Feature_base.h>
+#include <CGAL/Classification/compressed_float.h>
 
 namespace CGAL {
 
@@ -41,7 +42,7 @@ namespace Feature {
   */
 class Cluster_size : public CGAL::Classification::Feature_base
 {
-  std::vector<float> m_values;
+  std::vector<internal_float> m_values;
     
 public:
 
@@ -61,13 +62,13 @@ public:
     m_values.reserve (clusters.size());
 
     for (std::size_t i = 0; i < clusters.size(); ++ i)
-      m_values.push_back (float(clusters[i].size()));
+      m_values.push_back (internal_float(clusters[i].size()));
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t cluster_index)
+  virtual double value (std::size_t cluster_index)
   {
-    return m_values[cluster_index];
+    return double(m_values[cluster_index]);
   }
   /// \endcond
 };

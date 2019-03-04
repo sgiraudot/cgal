@@ -215,7 +215,7 @@ public:
       if (g != -1)
       {
         for (std::size_t f = 0; f < m_features.size(); ++ f)
-          ft.push_back(m_features[f]->value(i));
+          ft.push_back(float(m_features[f]->value(i)));
         gt.push_back(g);
 #ifdef CGAL_CLASSIFICATION_VERBOSE
         count[std::size_t(g)] ++;
@@ -248,21 +248,21 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  void operator() (std::size_t item_index, std::vector<float>& out) const
+  void operator() (std::size_t item_index, std::vector<double>& out) const
   {
     out.resize (m_labels.size(), 0.);
     
     std::vector<float> ft;
     ft.reserve (m_features.size());
     for (std::size_t f = 0; f < m_features.size(); ++ f)
-      ft.push_back (m_features[f]->value(item_index));
+      ft.push_back (float(m_features[f]->value(item_index)));
 
     std::vector<float> prob (m_labels.size());
 
     m_rfc->evaluate (ft.data(), prob.data());
     
     for (std::size_t i = 0; i < out.size(); ++ i)
-      out[i] = (std::min) (1.f, (std::max) (0.f, prob[i]));
+      out[i] = (std::min) (1., (std::max) (0., double(prob[i])));
   }
 
   /// \endcond

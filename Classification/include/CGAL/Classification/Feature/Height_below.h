@@ -60,14 +60,14 @@ class Height_below : public Feature_base
 {
   typedef typename GeomTraits::Iso_cuboid_3 Iso_cuboid_3;
 
-  typedef Image<float> Image_float;
+  typedef Image<internal_float> Image_float;
   typedef Planimetric_grid<GeomTraits, PointRange, PointMap> Grid;
 
   const PointRange& input;
   PointMap point_map;
   const Grid& grid;
   Image_float dtm;
-  std::vector<float> values;
+  std::vector<internal_float> values;
   
 public:
   /*!
@@ -90,12 +90,12 @@ public:
       for (std::size_t i = 0; i < grid.width(); ++ i)
         if (grid.has_points(i,j))
         {
-          float z_min = std::numeric_limits<float>::max();
+          internal_float z_min = std::numeric_limits<internal_float>::max();
 
           typename Grid::iterator end = grid.indices_end(i,j);
           for (typename Grid::iterator it = grid.indices_begin(i,j); it != end; ++ it)
           {
-            float z = float(get(point_map, *(input.begin()+(*it))).z());
+            internal_float z = internal_float(get(point_map, *(input.begin()+(*it))).z());
             z_min = (std::min(z_min, z));
           }
 
@@ -109,7 +109,7 @@ public:
       {
         std::size_t I = grid.x(i);
         std::size_t J = grid.y(i);
-        values[i] = float(get (point_map, *(input.begin() + i)).z() - dtm(I,J));
+        values[i] = internal_float(get (point_map, *(input.begin() + i)).z() - dtm(I,J));
       }
       dtm.free();
     }
@@ -117,16 +117,16 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
     if (values.empty())
     {
       std::size_t I = grid.x(pt_index);
       std::size_t J = grid.y(pt_index);
-      return float(get (point_map, *(input.begin() + pt_index)).z() - dtm(I,J));
+      return double(get (point_map, *(input.begin() + pt_index)).z()) - double(dtm(I,J));
     }
     
-    return values[pt_index];
+    return double(values[pt_index]);
   }
 
   /// \endcond

@@ -81,7 +81,7 @@ public:
   Echo_scatter (const PointRange& input,
                 EchoMap echo_map,
                 const Grid& grid,
-                float radius_neighbors = 1.)
+                double radius_neighbors = -1.)
     : grid (grid)
   {
     this->set_name ("echo_scatter");
@@ -117,7 +117,7 @@ public:
           for(std::size_t k = squareXmin; k <= squareXmax; k++){
             for(std::size_t l = squareYmin; l <= squareYmax; l++){
 									
-              if(CGAL::sqrt(pow((float)k-i,2)+pow((float)l-j,2))<=(float)0.5*radius_neighbors/grid.resolution())
+              if(CGAL::sqrt(pow((double)k-i,2)+pow((double)l-j,2))<=(double)0.5*radius_neighbors/grid.resolution())
               {
                 typename Grid::iterator end = grid.indices_end(k,l);
                 std::size_t nb = 0;
@@ -136,7 +136,7 @@ public:
 					
           }
 					
-          compressed_float v = compress_float (NB_echo_sup/float(NB_echo_total));
+          compressed_float v = compress_float (NB_echo_sup/double(NB_echo_total));
           if (echo_scatter.empty())
             Scatter(i,j) = v;
           else
@@ -149,15 +149,15 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
     if (echo_scatter.empty())
     {
       std::size_t I = grid.x(pt_index);
       std::size_t J = grid.y(pt_index);
-      return decompress_float (Scatter(I,J));
+      return double(decompress_float (Scatter(I,J)));
     }
-    return decompress_float (echo_scatter[pt_index]);
+    return double(decompress_float (echo_scatter[pt_index]));
   }
   /// \endcond
 };

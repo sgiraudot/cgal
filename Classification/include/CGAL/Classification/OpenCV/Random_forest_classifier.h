@@ -234,7 +234,7 @@ public:
   /// @}
 
   /// \cond SKIP_IN_MANUAL
-  void operator() (std::size_t item_index, std::vector<float>& out) const
+  void operator() (std::size_t item_index, std::vector<double>& out) const
   {
     out.resize (m_labels.size(), 0.);
     

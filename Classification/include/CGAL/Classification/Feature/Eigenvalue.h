@@ -26,6 +26,7 @@
 #include <vector>
 #include <CGAL/Classification/Feature_base.h>
 #include <CGAL/Classification/Local_eigen_analysis.h>
+#include <CGAL/Classification/compressed_float.h>
 
 namespace CGAL {
 
@@ -74,9 +75,9 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
-    return eigen.eigenvalue(pt_index)[std::size_t(m_idx)];
+    return double(eigen.eigenvalue(pt_index)[std::size_t(m_idx)]);
   }
   /// \endcond
 

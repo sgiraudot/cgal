@@ -405,7 +405,7 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  void operator() (std::size_t item_index, std::vector<float>& out) const
+  void operator() (std::size_t item_index, std::vector<double>& out) const
   {
     out.resize (m_labels.size(), 0.);
     
@@ -425,14 +425,14 @@ public:
     float* output_data = outputs[0].flat<float>().data();
 
     for (std::size_t i = 0; i < m_labels.size(); ++ i)
-      out[i] = output_data[i];
+      out[i] = double(output_data[i]);
   }
 
   
   void operator() (const std::vector<std::size_t>& item_indices,
-                   std::vector<std::vector<float> >& out) const
+                   std::vector<std::vector<double> >& out) const
   {
-    out.resize (item_indices.size(), std::vector<float>(m_labels.size(), 0.));
+    out.resize (item_indices.size(), std::vector<double>(m_labels.size(), 0.));
     
     TF::Tensor ft
       (TF::DataTypeToEnum<float>::v(), 
@@ -453,7 +453,7 @@ public:
 
     for (std::size_t i = 0; i < item_indices.size(); ++ i)
       for (std::size_t l = 0; l < m_labels.size(); ++ l)
-        out[i][l] = output_data[i * m_labels.size() + l];
+        out[i][l] = double(output_data[i * m_labels.size() + l]);
   }
   /// \endcond
   
@@ -1035,7 +1035,7 @@ void classify (const ItemRange& input,
   for (std::size_t i = 0; i < probabilities.size(); ++ i)
     probabilities[i].resize (input.size());
 
-  const std::size_t mem_allocated = sizeof(float) * input.size() * (labels.size() + classifier.features().size());
+  const std::size_t mem_allocated = sizeof(double) * input.size() * (labels.size() + classifier.features().size());
   const std::size_t size_max = 512 * 1024 * 1024;
   const std::size_t nb_subdivisions = (mem_allocated / size_max) + 1;
   std::cerr << nb_subdivisions << " subdivision(s) for GPU processing" << std::endl;
@@ -1048,12 +1048,12 @@ void classify (const ItemRange& input,
     for (std::size_t i = 0; i < input.size() / nb_subdivisions && idx < input.size(); ++ i)
       indices.push_back(idx ++);
     
-    std::vector<std::vector<float> > values;
+    std::vector<std::vector<double> > values;
     classifier (indices, values);
     for(std::size_t i = 0; i < indices.size(); ++ i)
     {
       std::size_t nb_class_best = 0;
-      float val_class_best = 0.f;
+      double val_class_best = 0.;
 
       for (std::size_t j = 0; j < labels.size(); ++ j)
       {
@@ -1084,7 +1084,7 @@ void classify (const ItemRange& input,
   
   output.resize(input.size());
 
-  const std::size_t mem_allocated = sizeof(float) * input.size() * (labels.size() + classifier.features().size());
+  const std::size_t mem_allocated = sizeof(double) * input.size() * (labels.size() + classifier.features().size());
   const std::size_t size_max = 512 * 1024 * 1024;
   const std::size_t nb_subdivisions = (mem_allocated / size_max) + 1;
   std::cerr << nb_subdivisions << " subdivision(s) for GPU processing" << std::endl;
@@ -1097,13 +1097,13 @@ void classify (const ItemRange& input,
     for (std::size_t i = 0; i < input.size() / nb_subdivisions && idx < input.size(); ++ i)
       indices.push_back(idx ++);
     
-    std::vector<std::vector<float> > values;
+    std::vector<std::vector<double> > values;
     classifier (indices, values);
 
     for(std::size_t i = 0; i < indices.size(); ++ i)
     {
       std::size_t nb_class_best = 0;
-      float val_class_best = 0.f;
+      double val_class_best = 0.f;
 
       for (std::size_t j = 0; j < labels.size(); ++ j)
       {

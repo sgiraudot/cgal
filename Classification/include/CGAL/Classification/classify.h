@@ -69,10 +69,10 @@ namespace internal {
     inline void apply (std::size_t s) const
     {
       std::size_t nb_class_best=0; 
-      std::vector<float> values;
+      std::vector<double> values;
       m_classifier (s, values);
         
-      float val_class_best = 0.f;
+      double val_class_best = 0.;
       for(std::size_t k = 0; k < m_labels.size(); ++ k)
       {
         if(val_class_best < values[k])
@@ -115,10 +115,10 @@ namespace internal {
     inline void apply (std::size_t s) const
     {
       std::size_t nb_class_best=0; 
-      std::vector<float> values;
+      std::vector<double> values;
       m_classifier (s, values);
         
-      float val_class_best = 0.f;
+      double val_class_best = 0.;
       for(std::size_t k = 0; k < m_labels.size(); ++ k)
       {
         m_prob[k][s] = values[k];
@@ -162,11 +162,11 @@ namespace internal {
     inline void apply (std::size_t s) const
     {
       std::size_t nb_class_best=0; 
-      std::vector<float> values;
+      std::vector<double> values;
       m_classifier (s, values);
         
-      float val_class_best = 0.f;
-      float val_class_scnd = 0.f;
+      double val_class_best = 0.;
+      double val_class_scnd = 0.;
       for(std::size_t k = 0; k < m_labels.size(); ++ k)
       {
         if(values[k] > val_class_best)
@@ -191,14 +191,14 @@ namespace internal {
   {
     const Label_set& m_labels;
     const Classifier& m_classifier;
-    std::vector<std::vector<float> >& m_values;
+    std::vector<std::vector<double> >& m_values;
     
   public:
 
     Classify_functor_local_smoothing_preprocessing
     (const Label_set& labels,
      const Classifier& classifier,
-     std::vector<std::vector<float> >& values)
+     std::vector<std::vector<double> >& values)
       : m_labels (labels), m_classifier (classifier), m_values (values)
     { }
 
@@ -212,7 +212,7 @@ namespace internal {
 
     inline void apply (std::size_t s) const
     {
-      std::vector<float> values;
+      std::vector<double> values;
       m_classifier(s, values);
       for(std::size_t k = 0; k < m_labels.size(); ++ k)
         m_values[k][s] = values[k];
@@ -225,7 +225,7 @@ namespace internal {
     const ItemRange& m_input;
     const ItemMap m_item_map;
     const Label_set& m_labels;
-    const std::vector<std::vector<float> >& m_values;
+    const std::vector<std::vector<double> >& m_values;
     const NeighborQuery& m_neighbor_query;
     LabelIndexRange& m_out;
     
@@ -234,7 +234,7 @@ namespace internal {
     Classify_functor_local_smoothing (const ItemRange& input,
                                       ItemMap item_map,
                                       const Label_set& labels,
-                                      const std::vector<std::vector<float> >& values,
+                                      const std::vector<std::vector<double> >& values,
                                       const NeighborQuery& neighbor_query,
                                       LabelIndexRange& out)
       : m_input (input), m_item_map (item_map), m_labels (labels),
@@ -256,13 +256,13 @@ namespace internal {
       std::vector<std::size_t> neighbors;
       m_neighbor_query (get (m_item_map, *(m_input.begin()+s)), std::back_inserter (neighbors));
 
-      std::vector<float> mean (m_values.size(), 0.);
+      std::vector<double> mean (m_values.size(), 0.);
       for (std::size_t n = 0; n < neighbors.size(); ++ n)
         for (std::size_t j = 0; j < m_values.size(); ++ j)
           mean[j] += m_values[j][neighbors[n]];
 
       std::size_t nb_class_best=0; 
-      float val_class_best = 0.f;
+      double val_class_best = 0.;
       for(std::size_t k = 0; k < mean.size(); ++ k)
       {
         mean[k] /= neighbors.size();
@@ -289,7 +289,7 @@ namespace internal {
     const Label_set& m_labels;
     const Classifier& m_classifier;
     const NeighborQuery& m_neighbor_query;
-    float m_strength;
+    double m_strength;
     const std::vector<std::vector<std::size_t> >& m_indices;
     const std::vector<std::pair<std::size_t, std::size_t> >& m_input_to_indices;
     LabelIndexRange& m_out;
@@ -307,7 +307,7 @@ namespace internal {
                                const Label_set& labels,
                                const Classifier& classifier,
                                const NeighborQuery& neighbor_query,
-                               float strength,
+                               double strength,
                                const std::vector<std::vector<std::size_t> >& indices,
                                const std::vector<std::pair<std::size_t, std::size_t> >& input_to_indices,
                                LabelIndexRange& out)
@@ -352,13 +352,13 @@ namespace internal {
             edge_weights.push_back (m_strength);
           }
 
-        std::vector<float> values;
+        std::vector<double> values;
         m_classifier(s, values);
         std::size_t nb_class_best = 0;
-        float val_class_best = 0.f;
+        double val_class_best = 0.;
         for(std::size_t k = 0; k < m_labels.size(); ++ k)
         {
-          float value = values[k];
+          double value = values[k];
           probability_matrix[k][j] = -std::log(value);
             
           if(val_class_best < value)
@@ -550,8 +550,8 @@ namespace internal {
                                       const NeighborQuery& neighbor_query,
                                       LabelIndexRange& output)
   {
-    std::vector<std::vector<float> > values
-      (labels.size(), std::vector<float> (input.size(), -1.));
+    std::vector<std::vector<double> > values
+      (labels.size(), std::vector<double> (input.size(), -1.));
     internal::Classify_functor_local_smoothing_preprocessing<Classifier>
       f1 (labels, classifier, values);
     internal::Classify_functor_local_smoothing<ItemRange, ItemMap, NeighborQuery, LabelIndexRange>
@@ -632,7 +632,7 @@ namespace internal {
                                const Label_set& labels,
                                const Classifier& classifier,
                                const NeighborQuery& neighbor_query,
-                               const float strength,
+                               const double strength,
                                const std::size_t min_number_of_subdivisions,
                                LabelIndexRange& output)
   {

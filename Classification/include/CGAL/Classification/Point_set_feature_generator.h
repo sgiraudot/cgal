@@ -108,7 +108,7 @@ template <typename GeomTraits,
 #if defined(DOXYGEN_RUNNING)
           typename DiagonalizeTraits>
 #else
-          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float,3> >
+          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double,3> >
 #endif
 class Point_set_feature_generator
 {
@@ -165,11 +165,11 @@ private:
     Neighborhood* neighborhood;
     Planimetric_grid* grid;
     Local_eigen_analysis* eigen;
-    float voxel_size;
+    double voxel_size;
 
     // Inexact approximated scale
     Scale (const PointRange& input, PointMap point_map,
-           const Iso_cuboid_3& bbox, float voxel_size,
+           const Iso_cuboid_3& bbox, double voxel_size,
            Planimetric_grid* lower_grid = NULL)
       : voxel_size (voxel_size)
     {
@@ -193,7 +193,7 @@ private:
         (Local_eigen_analysis::create_from_point_set
          (input, point_map, neighborhood->k_neighbor_query(12), ConcurrencyTag(), DiagonalizeTraits()));
       
-      float range = eigen->mean_range();
+      double range = eigen->mean_range();
       if (this->voxel_size < 0)
         this->voxel_size = range;
       t.stop();
@@ -213,7 +213,7 @@ private:
 
     // Exact scale
     Scale (const PointRange& input, PointMap point_map,
-           const Iso_cuboid_3& bbox, float voxel_size,
+           const Iso_cuboid_3& bbox, double voxel_size,
            Neighborhood* precomputed_neighborhood)
       : voxel_size (voxel_size)
     {
@@ -241,7 +241,7 @@ private:
            (input, point_map, neighborhood->sphere_neighbor_query(voxel_size),
             ConcurrencyTag(), DiagonalizeTraits()));
       
-      float range = eigen->mean_range();
+      double range = eigen->mean_range();
       if (this->voxel_size < 0)
         this->voxel_size = range;
       t.stop();
@@ -265,9 +265,9 @@ private:
       delete eigen;
     }
 
-    float grid_resolution() const { return voxel_size; }
-    float radius_neighbors() const { return voxel_size * 3; }
-    float radius_dtm() const { return voxel_size * 10; }
+    double grid_resolution() const { return voxel_size; }
+    double radius_neighbors() const { return voxel_size * 3; }
+    double radius_dtm() const { return voxel_size * 10; }
     
   };
 
@@ -302,9 +302,9 @@ public:
   Point_set_feature_generator(const PointRange& input,
                               PointMap point_map,
                               std::size_t nb_scales,
-                              float voxel_size = -1.f,
+                              double voxel_size = -1.,
                               bool exact_scales = false,
-                              float exact_scales_factor = 2.f)
+                              double exact_scales_factor = 2.)
     : m_input (input), m_point_map (point_map)
   {
     m_bbox = CGAL::bounding_box
@@ -364,7 +364,7 @@ public:
                               VectorMap normal_map = VectorMap(),
                               ColorMap color_map = ColorMap(),
                               EchoMap echo_map = EchoMap(),
-                              float voxel_size = -1.f)
+                              double voxel_size = -1.f)
     : m_input (input), m_point_map (point_map)
   {
     m_bbox = CGAL::bounding_box
@@ -553,7 +553,7 @@ public:
     resolution is the length and width of a cell of the
     `Planimetric_grid` defined at this scale.
   */
-  float grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
+  double grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
   /*!
 
     \brief Returns the radius used for neighborhood queries at scale
@@ -561,13 +561,13 @@ public:
     a geometric point of view at this scale (that is to say that
     encloses a few cells of `Planimetric_grid`).
   */
-  float radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
+  double radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
   /*!
     \brief Returns the radius used for digital terrain modeling at
     scale `scale`. This radius represents the minimum size of a
     building at this scale.
   */
-  float radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
+  double radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
 
   /// @}
 

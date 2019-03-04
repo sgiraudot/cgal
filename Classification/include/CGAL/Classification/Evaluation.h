@@ -131,20 +131,20 @@ public:
     the true positives and the false positives.
 
   */
-  float precision (Label_handle label) const
+  double precision (Label_handle label) const
   {
     std::size_t idx = m_map_labels[label];
     if (!label_has_ground_truth(idx))
-      return std::numeric_limits<float>::quiet_NaN();
+      return std::numeric_limits<double>::quiet_NaN();
     
     std::size_t total = 0;
     for (std::size_t i = 0; i < m_labels.size(); ++ i)
       total += m_confusion[idx][i];
 
     if (total == 0)
-      return 0.f;
+      return 0.;
     
-    return m_confusion[idx][idx] / float(total);
+    return m_confusion[idx][idx] / double(total);
   }
 
   /*!
@@ -155,16 +155,16 @@ public:
     the true positives and the false negatives.
 
   */
-  float recall (Label_handle label) const
+  double recall (Label_handle label) const
   {
     std::size_t idx = m_map_labels[label];
     if (!label_has_ground_truth(idx))
-      return std::numeric_limits<float>::quiet_NaN();
+      return std::numeric_limits<double>::quiet_NaN();
     
     std::size_t total = 0;
     for (std::size_t i = 0; i < m_labels.size(); ++ i)
       total += m_confusion[i][idx];
-    return m_confusion[idx][idx] / float(total);
+    return m_confusion[idx][idx] / double(total);
   }
 
   /*!
@@ -178,15 +178,15 @@ public:
     \f]
 
   */
-  float f1_score (Label_handle label) const
+  double f1_score (Label_handle label) const
   {
-    float p = precision(label);
-    float r = recall(label);
+    double p = precision(label);
+    double r = recall(label);
 
-    if (p == 0.f && r == 0.f)
-      return 0.f;
+    if (p == 0. && r == 0.)
+      return 0.;
     
-    return 2.f * p * r / (p + r);
+    return 2. * p * r / (p + r);
   }
 
   /*!
@@ -197,7 +197,7 @@ public:
     the sum of the true positives, of the false positives and of the
     false negatives.
   */
-  float intersection_over_union (Label_handle label) const
+  double intersection_over_union (Label_handle label) const
   {
     std::size_t idx = m_map_labels[label];
     
@@ -209,7 +209,7 @@ public:
         total += m_confusion[idx][i];
     }
 
-    return m_confusion[idx][idx] / float(total);
+    return m_confusion[idx][idx] / double(total);
   }
 
   /// @}
@@ -243,7 +243,7 @@ public:
     Accuracy is the total number of true positives divided by the
     total number of provided inliers.
   */
-  float accuracy() const
+  double accuracy() const
   {
     std::size_t true_positives = 0;
     std::size_t total = 0;
@@ -253,16 +253,16 @@ public:
       for (std::size_t j = 0; j < m_labels.size(); ++ j)
         total += m_confusion[i][j];
     }
-    return true_positives / float(total);
+    return true_positives / double(total);
   }
   
   /*!
     \brief Returns the mean \f$F_1\f$ score of the training over all
     labels (see `f1_score()`).
   */
-  float mean_f1_score() const
+  double mean_f1_score() const
   {
-    float mean = 0;
+    double mean = 0;
     std::size_t nb = 0;
     for (std::size_t i = 0; i < m_labels.size(); ++ i)
       if (label_has_ground_truth(i))
@@ -277,13 +277,13 @@ public:
     \brief Returns the mean intersection over union of the training
     over all labels (see `intersection_over_union()`).
   */
-  float mean_intersection_over_union() const
+  double mean_intersection_over_union() const
   {
-    float mean = 0;
+    double mean = 0;
     std::size_t nb = 0;
     for (std::size_t i = 0; i < m_labels.size(); ++ i)
     {
-      float iou = intersection_over_union(m_labels[i]);
+      double iou = intersection_over_union(m_labels[i]);
       if (!std::isnan(iou))
       {
         mean += iou;

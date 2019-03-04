@@ -108,7 +108,7 @@ template <typename GeomTraits,
 #else
           typename ConcurrencyTag = CGAL::Sequential_tag,
 #endif
-          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float,3> >
+          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double,3> >
 class Mesh_feature_generator
 {
   
@@ -164,12 +164,12 @@ private:
     Neighborhood* neighborhood;
     Planimetric_grid* grid;
     Local_eigen_analysis* eigen;
-    float voxel_size;
+    double voxel_size;
     
     Scale (const FaceListGraph& input,
            const Face_range& range,
            PointMap point_map,
-           const Iso_cuboid_3& bbox, float voxel_size,
+           const Iso_cuboid_3& bbox, double voxel_size,
            std::size_t nb_scale,
            Planimetric_grid* lower_grid = NULL)
       : voxel_size (voxel_size)
@@ -188,7 +188,7 @@ private:
         (Local_eigen_analysis::create_from_face_graph
          (input, neighborhood->n_ring_neighbor_query(nb_scale + 1),
           ConcurrencyTag(), DiagonalizeTraits()));
-      float mrange = eigen->mean_range();
+      double mrange = eigen->mean_range();
       if (this->voxel_size < 0)
         this->voxel_size = mrange;
       t.stop();
@@ -225,9 +225,9 @@ private:
       }
     }
 
-    float grid_resolution() const { return voxel_size; }
-    float radius_neighbors() const { return voxel_size * 3; }
-    float radius_dtm() const { return voxel_size * 10; }
+    double grid_resolution() const { return voxel_size; }
+    double radius_neighbors() const { return voxel_size * 3; }
+    double radius_dtm() const { return voxel_size * 10; }
     
   };
 
@@ -265,7 +265,7 @@ public:
   Mesh_feature_generator(const FaceListGraph& input,
                          PointMap point_map,
                          std::size_t nb_scales,
-                         float voxel_size = -1.f)
+                         double voxel_size = -1.)
     : m_input (input), m_range(faces(input)), m_point_map (point_map)
   {
 
@@ -401,7 +401,7 @@ public:
     resolution is the length and width of a cell of the
     `Planimetric_grid` defined at this scale.
   */
-  float grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
+  double grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
   /*!
 
     \brief Returns the radius used for neighborhood queries at scale
@@ -409,13 +409,13 @@ public:
     a geometric point of view at this scale (that is to say that
     encloses a few cells of `Planimetric_grid`).
   */
-  float radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
+  double radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
   /*!
     \brief Returns the radius used for digital terrain modeling at
     scale `scale`. This radius represents the minimum size of a
     building at this scale.
   */
-  float radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
+  double radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
 
   /// @}
     

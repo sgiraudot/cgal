@@ -29,7 +29,7 @@ public:
         this->set_name (feature->name() + std::string("_other"));
     }
 
-    float value (std::size_t idx)
+    double value (std::size_t idx)
     {
       if (m_self)
         return m_feature->value(m_neighborhood[idx].first);
@@ -60,7 +60,7 @@ public:
       , m_complete (complete)
     { }
 
-    void operator() (std::size_t item_index, std::vector<float>& out) const
+    void operator() (std::size_t item_index, std::vector<double>& out) const
     {
       std::size_t first = m_neighborhood_index[item_index];
       std::size_t last = m_neighborhood_index[item_index+1];
@@ -69,7 +69,7 @@ public:
       
       for (std::size_t i = first; i < last; ++ i)
       {
-        std::vector<float> local_out;
+        std::vector<double> local_out;
         m_classifier(i, local_out);
         if (m_complete)
           for (std::size_t j = 0; j < out.size(); ++ j)
@@ -243,7 +243,7 @@ namespace internal {
     ItemMap m_item_map;
     const Label_set& m_labels;
     const Joint_classifier& m_classifier;
-    float m_strength;
+    double m_strength;
     const std::vector<std::vector<std::size_t> >& m_indices;
     const std::vector<std::pair<std::size_t, std::size_t> >& m_input_to_indices;
     LabelIndexRange& m_out;
@@ -260,7 +260,7 @@ namespace internal {
                             ItemMap item_map,
                             const Label_set& labels,
                             const Joint_classifier& classifier,
-                            float strength,
+                            double strength,
                             const std::vector<std::vector<std::size_t> >& indices,
                             const std::vector<std::pair<std::size_t, std::size_t> >& input_to_indices,
                             LabelIndexRange& out)
@@ -292,7 +292,7 @@ namespace internal {
       {
         std::size_t s = m_indices[sub][j];
         
-        std::vector<float> values(m_labels.size(), 0.f);
+        std::vector<double> values(m_labels.size(), 0.f);
 
         std::size_t first = m_classifier.first(s);
         std::size_t last = m_classifier.last(s);
@@ -304,7 +304,7 @@ namespace internal {
         {
           std::size_t neighbor_s = m_classifier.neighbor(i);
           
-          std::vector<float> values_local;
+          std::vector<double> values_local;
           
           m_classifier.base()(i, values_local);
           
@@ -321,7 +321,7 @@ namespace internal {
           {
             edges.push_back (std::make_pair (j, m_input_to_indices[neighbor_s].second));
 
-            float weight = 0.f;
+            double weight = 0.;
             if (m_classifier.complete())
               for (std::size_t k = 0; k < m_labels.size(); ++ k)
                 weight += values_local[k * m_labels.size() + k];
@@ -334,10 +334,10 @@ namespace internal {
         }
         
         std::size_t nb_class_best = 0;
-        float val_class_best = 0.f;
+        double val_class_best = 0.f;
         for(std::size_t k = 0; k < m_labels.size(); ++ k)
         {
-          float value = values[k] / (last - first);
+          double value = values[k] / (last - first);
           probability_matrix[k][j] = -std::log(value);
             
           if(val_class_best < value)
@@ -419,7 +419,7 @@ namespace internal {
                                const Label_set& labels,
                                const Joint_classification_wrapper::Joint_classifier<Classifier>& classifier,
                                const Joint_classification_wrapper::unspecified_type&,
-                               const float strength,
+                               const double strength,
                                const std::size_t min_number_of_subdivisions,
                                LabelIndexRange& output)
   {
@@ -427,11 +427,11 @@ namespace internal {
       (boost::make_transform_iterator (input.begin(), CGAL::Property_map_to_unary_function<ItemMap>(item_map)),
        boost::make_transform_iterator (input.end(), CGAL::Property_map_to_unary_function<ItemMap>(item_map)));
 
-    float Dx = float(bbox.xmax() - bbox.xmin());
-    float Dy = float(bbox.ymax() - bbox.ymin());
-    float A = Dx * Dy;
-    float a = A / min_number_of_subdivisions;
-    float l = std::sqrt(a);
+    double Dx = double(bbox.xmax() - bbox.xmin());
+    double Dy = double(bbox.ymax() - bbox.ymin());
+    double A = Dx * Dy;
+    double a = A / min_number_of_subdivisions;
+    double l = std::sqrt(a);
     std::size_t nb_x = std::size_t(Dx / l) + 1;
     std::size_t nb_y = std::size_t((A / nb_x) / a) + 1;
     std::size_t nb = nb_x * nb_y;
@@ -442,11 +442,11 @@ namespace internal {
       for (std::size_t y = 0; y < nb_y; ++ y)
       {
         bboxes.push_back
-          (CGAL::Bbox_3 (bbox.xmin() + Dx * (x / float(nb_x)),
-                         bbox.ymin() + Dy * (y / float(nb_y)),
+          (CGAL::Bbox_3 (bbox.xmin() + Dx * (x / double(nb_x)),
+                         bbox.ymin() + Dy * (y / double(nb_y)),
                          bbox.zmin(),
-                         bbox.xmin() + Dx * ((x+1) / float(nb_x)),
-                         bbox.ymin() + Dy * ((y+1) / float(nb_y)),
+                         bbox.xmin() + Dx * ((x+1) / double(nb_x)),
+                         bbox.ymin() + Dy * ((y+1) / double(nb_y)),
                          bbox.zmax()));
       }
 

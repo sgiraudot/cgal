@@ -83,7 +83,7 @@ public:
   Vertical_dispersion (const PointRange& input,
                        PointMap point_map,
                        const Grid& grid,
-                       float radius_neighbors = -1.)
+                       double radius_neighbors = -1.)
     : grid (grid)
   {
     this->set_name ("vertical_dispersion");
@@ -104,7 +104,7 @@ public:
     std::size_t square = (std::size_t)(0.5 * radius_neighbors / grid.resolution()) + 1;
     typename GeomTraits::Vector_3 verti (0., 0., 1.);
 
-    std::vector<float> hori;
+    std::vector<internal_float> hori;
 
     for (std::size_t j = 0; j < grid.height(); j++){	
       for (std::size_t i = 0; i < grid.width(); i++){
@@ -118,23 +118,23 @@ public:
         std::size_t squareYmin = (j < square ? 0 : j - square);
         std::size_t squareYmax = (std::min) (grid.height()-1, j + square);
 
-        float bound = (float)0.5*radius_neighbors/grid.resolution();
+        internal_float bound = (internal_float)0.5*radius_neighbors/grid.resolution();
         bound = CGAL::square(bound);
         for(std::size_t k = squareXmin; k <= squareXmax; k++)
           for(std::size_t l = squareYmin; l <= squareYmax; l++)
           {
-            if(CGAL::square((float)(k-i))+ CGAL::square((float)(l-j))
+            if(CGAL::square((internal_float)(k-i))+ CGAL::square((internal_float)(l-j))
                <= bound)
             {
               for (typename Grid::iterator it = grid.indices_begin(k,l); it != grid.indices_end(k,l); ++ it)
-                hori.push_back (float(get(point_map, *(input.begin()+(*it))).z()));
+                hori.push_back (internal_float(get(point_map, *(input.begin()+(*it))).z()));
             }
           }
       
         if (hori.empty())
           continue;
               
-        std::vector<float>::iterator min_it, max_it;
+        std::vector<internal_float>::iterator min_it, max_it;
         boost::tie(min_it, max_it)
           = boost::minmax_element (hori.begin(), hori.end());
 
@@ -151,7 +151,7 @@ public:
           if (occupy[k])
             ++ nb_occ;
 
-        compressed_float v = compress_float (1.f - (nb_occ / (float)(occupy.size())));
+        compressed_float v = compress_float (1.f - (nb_occ / (internal_float)(occupy.size())));
         if (values.empty())
           Dispersion(i,j) = v;
         else
@@ -165,15 +165,15 @@ public:
     }
   }
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
     if (values.empty())
     {
       std::size_t I = grid.x(pt_index);
       std::size_t J = grid.y(pt_index);
-      return decompress_float (Dispersion(I,J));
+      return double(decompress_float (Dispersion(I,J)));
     }
-    return decompress_float (values[pt_index]);
+    return double(decompress_float (values[pt_index]));
   }
   /// \endcond
 };

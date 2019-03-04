@@ -103,13 +103,13 @@ private:
   typedef typename Classification::HSV_Color HSV_Color;
 
 #ifdef CGAL_CLASSIFICATION_PRECOMPUTE_FEATURES
-  std::vector<float> color_feature;
+  std::vector<internal_float> color_feature;
 #else
   const PointRange& input;
   ColorMap color_map;
   Channel m_channel;
-  float m_mean;
-  float m_sd;
+  double m_mean;
+  double m_sd;
 #endif  
   
 public:
@@ -128,7 +128,7 @@ public:
   Hsv (const PointRange& input,
        ColorMap color_map,
        Channel channel,
-       float mean, float sd)
+       double mean, double sd)
 #ifndef CGAL_CLASSIFICATION_PRECOMPUTE_FEATURES
     : input(input), color_map(color_map), m_channel(channel), m_mean(mean), m_sd(sd)
 #endif
@@ -150,14 +150,14 @@ public:
     this->set_name (oss.str());
   }
 
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
 #ifdef CGAL_CLASSIFICATION_PRECOMPUTE_FEATURES
-    return color_feature[pt_index];
+    return double(color_feature[pt_index]);
 #else
     HSV_Color c = Classification::rgb_to_hsv (get(color_map, *(input.begin()+pt_index)));
-    return std::exp (-(c[std::size_t(m_channel)] - m_mean)
-                     * (c[std::size_t(m_channel)] - m_mean) / (2.f * m_sd * m_sd));
+    return double(std::exp (-(c[std::size_t(m_channel)] - m_mean)
+                            * (c[std::size_t(m_channel)] - m_mean) / (2. * m_sd * m_sd)));
 #endif
   }
 
