@@ -519,7 +519,8 @@ void Point_set_item_classification::reset_indices ()
     *(indices.begin() + i) = idx ++;
 }
 
-void Point_set_item_classification::compute_features (std::size_t nb_scales, float voxel_size)
+void Point_set_item_classification::compute_features (std::size_t nb_scales, float voxel_size,
+                                                      bool exact, double exact_scale_factor)
 {
   CGAL_assertion (!(m_points->point_set()->empty()));
 
@@ -549,7 +550,8 @@ void Point_set_item_classification::compute_features (std::size_t nb_scales, flo
   if (!echo)
     boost::tie (echo_map, echo) = m_points->point_set()->template property_map<boost::uint8_t>("number_of_returns");
 
-  m_generator = new Generator (*(m_points->point_set()), m_points->point_set()->point_map(), nb_scales, voxel_size);
+  m_generator = new Generator (*(m_points->point_set()), m_points->point_set()->point_map(), nb_scales, voxel_size,
+                               exact, exact_scale_factor);
 
   CGAL::Real_timer t;
   t.start();

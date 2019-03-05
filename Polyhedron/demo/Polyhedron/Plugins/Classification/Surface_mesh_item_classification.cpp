@@ -191,7 +191,8 @@ void Surface_mesh_item_classification::change_color (int index, float* vmin, flo
   }
 }
 
-void Surface_mesh_item_classification::compute_features (std::size_t nb_scales, float voxel_size)
+void Surface_mesh_item_classification::compute_features (std::size_t nb_scales, float voxel_size,
+                                                         bool exact, double exact_scale_factor)
 {
   std::cerr << "Computing features with " << nb_scales << " scale(s) and ";
   if (voxel_size == -1)

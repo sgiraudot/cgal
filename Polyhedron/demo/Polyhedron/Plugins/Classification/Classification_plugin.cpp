@@ -619,6 +619,18 @@ public Q_SLOTS:
     voxel_size->setValue (0.0);
     voxel_size->setSingleStep (0.01);
 
+    QCheckBox* exact = dialog.add<QCheckBox> ("Compute exact scales (longer): ");
+    exact->setChecked (false);
+
+    QDoubleSpinBox* ratio = dialog.add<QDoubleSpinBox> ("Exact scales ratio:");
+    ratio->setRange (1.1, 10.0);
+    ratio->setValue (2.0);
+    ratio->setSingleStep (0.01);
+    ratio->setEnabled(false);
+    
+    connect(exact, SIGNAL(toggled(bool)),
+            ratio, SLOT(setEnabled(bool)));
+
     if (dialog.exec() != QDialog::Accepted)
       return;
 
@@ -628,7 +640,8 @@ public Q_SLOTS:
     if (vsize == 0.f)
       vsize = -1.f; // auto value
     
-    classif->compute_features (std::size_t(scales->value()), vsize);
+    classif->compute_features (std::size_t(scales->value()), vsize,
+                               exact->isChecked(), ratio->value());
 
     update_plugin_from_item(classif);
     QApplication::restoreOverrideCursor();

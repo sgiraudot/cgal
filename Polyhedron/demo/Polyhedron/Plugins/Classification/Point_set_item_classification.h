@@ -117,7 +117,7 @@ class Point_set_item_classification : public Item_classification_base
                          xcenter + dx, ycenter + dy, zcenter + dz);
   }
 
-  void compute_features (std::size_t nb_scales, float voxel_size);
+  void compute_features (std::size_t nb_scales, float voxel_size, bool exact, double exact_scale_factor);
 
   std::string feature_statistics() const
   {

@@ -69,7 +69,7 @@ public:
 
   virtual CGAL::Bbox_3 bbox() { return item()->bbox(); }
 
-  virtual void compute_features (std::size_t nb_scales, float voxel_size) = 0;
+  virtual void compute_features (std::size_t nb_scales, float voxel_size, bool exact, double exact_scale_factor) = 0;
 
   virtual std::string feature_statistics () const { return std::string(); }
   

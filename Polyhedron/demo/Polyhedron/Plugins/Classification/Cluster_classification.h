@@ -97,7 +97,7 @@ class Cluster_classification : public Item_classification_base
                          xcenter + dx, ycenter + dy, zcenter + dz);
   }
 
-  void compute_features (std::size_t nb_scales, float voxel_size);
+  void compute_features (std::size_t nb_scales, float voxel_size, bool exact, double exact_scale_factor);
   void add_remaining_point_set_properties_as_features(Feature_set& feature_set);
   
   void select_random_region();

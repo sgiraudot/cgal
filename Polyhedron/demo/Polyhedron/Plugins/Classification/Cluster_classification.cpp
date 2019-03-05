@@ -605,7 +605,8 @@ void Cluster_classification::reset_indices ()
     *(indices.begin() + i) = idx ++;
 }
 
-void Cluster_classification::compute_features (std::size_t nb_scales, float voxel_size)
+void Cluster_classification::compute_features (std::size_t nb_scales, float voxel_size,
+                                               bool exact, double exact_scale_factor)
 {
   CGAL_assertion (!(m_points->point_set()->empty()));
 
@@ -634,7 +635,8 @@ void Cluster_classification::compute_features (std::size_t nb_scales, float voxe
 
   Feature_set pointwise_features;
 
-  Generator generator (*(m_points->point_set()), m_points->point_set()->point_map(), nb_scales, voxel_size);
+  Generator generator (*(m_points->point_set()), m_points->point_set()->point_map(), nb_scales, voxel_size,
+                       exact, exact_scale_factor);
   
   CGAL::Real_timer t;
   t.start();
