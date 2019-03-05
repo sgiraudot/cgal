@@ -61,7 +61,7 @@ class Elevation : public Feature_base
 {
   typedef typename GeomTraits::Iso_cuboid_3 Iso_cuboid_3;
 
-  typedef Image<float> Image_float;
+  typedef Image<internal_float> Image_float;
   typedef Image<compressed_float> Image_cfloat;
   typedef Planimetric_grid<GeomTraits, PointRange, PointMap> Grid;
 
@@ -70,8 +70,8 @@ class Elevation : public Feature_base
   const Grid& grid;
   Image_cfloat dtm;
   std::vector<compressed_float> values;
-  float z_max;
-  float z_min;
+  internal_float z_max;
+  internal_float z_min;
   
 public:
   /*!
@@ -86,7 +86,7 @@ public:
   Elevation (const PointRange& input,
              PointMap point_map,
              const Grid& grid,
-             float radius_dtm = -1.)
+             double radius_dtm = -1.)
     : input(input), point_map(point_map), grid(grid)
   {
     this->set_name ("elevation");
@@ -96,19 +96,19 @@ public:
     //DEM
     Image_float dem(grid.width(),grid.height());
 
-    z_max = 0.f;
-    z_min = std::numeric_limits<float>::max();
+    z_max = internal_float(0);
+    z_min = std::numeric_limits<internal_float>::max();
     
     for (std::size_t j = 0; j < grid.height(); ++ j)
       for (std::size_t i = 0; i < grid.width(); ++ i)
         if (grid.has_points(i,j))
         {
-          float mean = 0.;
+          internal_float mean = internal_float(0);
           std::size_t nb = 0;
           typename Grid::iterator end = grid.indices_end(i,j);
           for (typename Grid::iterator it = grid.indices_begin(i,j); it != end; ++ it)
           {
-            float z = float(get(point_map, *(input.begin()+(*it))).z());
+            internal_float z = internal_float(get(point_map, *(input.begin()+(*it))).z());
             z_min = (std::min(z_min, z));
             z_max = (std::max(z_max, z));
             mean += z;
@@ -131,7 +131,7 @@ public:
           std::size_t squareXmin = (i < square ? 0 : i - square);
           std::size_t squareXmax = (std::min)(grid.width() - 1, i + square);
 
-          std::vector<float> z;
+          std::vector<internal_float> z;
           z.reserve(squareXmax - squareXmin +1 );
           for(std::size_t k = squareXmin; k <= squareXmax; k++)
             if (dem(k,j) != 0.)
@@ -154,7 +154,7 @@ public:
         {
           std::size_t squareYmin = (j < square ? 0 : j - square);
           std::size_t squareYmax = (std::min)(grid.height() - 1, j + square);
-          std::vector<float> z;
+          std::vector<internal_float> z;
           z.reserve(squareYmax - squareYmin +1 );
           for(std::size_t l = squareYmin; l <= squareYmax; l++)
             if (dtm_x(i,l) != 0.)
@@ -178,19 +178,19 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
-    float d = 0.f;
+    double d = 0.;
     if (values.empty())
     {
       std::size_t I = grid.x(pt_index);
       std::size_t J = grid.y(pt_index);
-      d = decompress_float (dtm(I,J), z_min, z_max);
+      d = double(decompress_float (dtm(I,J), z_min, z_max));
     }
     else
-      d = decompress_float (values[pt_index], z_min, z_max);
+      d = double(decompress_float (values[pt_index], z_min, z_max));
     
-    return ((float)(get(point_map, *(input.begin()+pt_index)).z()-d));
+    return ((double)(get(point_map, *(input.begin()+pt_index)).z()-d));
   }
 
   /// \endcond

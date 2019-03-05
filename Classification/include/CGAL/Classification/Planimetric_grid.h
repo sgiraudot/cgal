@@ -70,7 +70,7 @@ private:
   const PointRange* m_points;
   PointMap m_point_map;
   Iso_cuboid_3 m_bbox;
-  float m_resolution;
+  double m_resolution;
 
   Image_indices m_grid;
   Planimetric_grid* m_lower_scale;
@@ -213,7 +213,7 @@ public:
   Planimetric_grid (const PointRange& input,
                     PointMap point_map,
                     const Iso_cuboid_3& bbox,
-                    float grid_resolution)
+                    double grid_resolution)
     : m_points (&input), m_point_map (point_map)
     , m_bbox (bbox), m_resolution (grid_resolution), m_lower_scale(NULL), m_current_scale(0)
   {
@@ -277,7 +277,7 @@ public:
   /*!
     \brief Returns the resolution of the grid.
   */
-  float resolution() const
+  double resolution() const
   {
     return m_resolution;
   }

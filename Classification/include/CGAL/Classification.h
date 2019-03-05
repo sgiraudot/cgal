@@ -25,6 +25,7 @@
 
 #include <CGAL/Classification/classify.h>
 #include <CGAL/Classification/Sum_of_weighted_features_classifier.h>
+#include <CGAL/Classification/K_means_classifier.h>
 #include <CGAL/Classification/ETHZ/Random_forest_classifier.h>
 
 #ifdef CGAL_LINKED_WITH_OPENCV

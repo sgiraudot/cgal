@@ -94,22 +94,22 @@ public:
     {
       typename GeomTraits::Vector_3 normal = get(normal_map, *(input.begin()+i));
       normal = normal / CGAL::sqrt (normal * normal);
-      verticality_feature.push_back (compress_float(1.f - float(CGAL::abs(normal * vertical))));
+      verticality_feature.push_back (compress_float(1.f - internal_float(CGAL::abs(normal * vertical))));
     }
   }
 
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
     if (eigen != NULL)
     {
       typename GeomTraits::Vector_3 normal = eigen->normal_vector<GeomTraits>(pt_index);
       normal = normal / CGAL::sqrt (normal * normal);
-      return (1.f - float(CGAL::abs(normal * vertical)));
+      return (1. - double(CGAL::abs(normal * vertical)));
     }
     else
-      return decompress_float(verticality_feature[pt_index]);
+      return double(decompress_float(verticality_feature[pt_index]));
   }
   /// \endcond
 };

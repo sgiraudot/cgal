@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <CGAL/Classification/Feature_base.h>
+#include <CGAL/Classification/compressed_float.h>
 #include <CGAL/Bbox_3.h>
 
 namespace CGAL {
@@ -44,7 +45,7 @@ namespace Feature {
   */
 class Cluster_vertical_extent : public CGAL::Classification::Feature_base
 {
-  std::vector<float> m_values;
+  std::vector<internal_float> m_values;
   
 public:
 
@@ -67,22 +68,22 @@ public:
     m_values.reserve (clusters.size());
     for (std::size_t i = 0; i < clusters.size(); ++ i)
     {
-      float min_z = std::numeric_limits<float>::max();
-      float max_z = -std::numeric_limits<float>::min();
+      double min_z = std::numeric_limits<double>::max();
+      double max_z = -std::numeric_limits<double>::min();
         
       for (std::size_t j = 0; j < clusters[i].size(); ++ j)
       {
         const Item& item = clusters[i][j];
         const CGAL::Bbox_3& bbox = item.bbox();
-        min_z = (std::min) (float(bbox.zmin()), min_z);
-        max_z = (std::max) (float(bbox.zmax()), max_z);
+        min_z = (std::min) (double(bbox.zmin()), min_z);
+        max_z = (std::max) (double(bbox.zmax()), max_z);
       }
-      m_values.push_back ((max_z - min_z));
+      m_values.push_back (internal_float(max_z - min_z));
     }
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t cluster_index) { return m_values[cluster_index]; }
+  virtual double value (std::size_t cluster_index) { return double(m_values[cluster_index]); }
   /// \endcond
     
 };

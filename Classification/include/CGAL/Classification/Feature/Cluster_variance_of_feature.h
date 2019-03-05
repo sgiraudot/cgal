@@ -27,6 +27,7 @@
 #include <sstream>
 
 #include <CGAL/Classification/Feature_base.h>
+#include <CGAL/Classification/compressed_float.h>
 
 namespace CGAL {
 
@@ -44,7 +45,7 @@ namespace Feature {
   */
 class Cluster_variance_of_feature : public CGAL::Classification::Feature_base
 {
-  std::vector<float> m_values;
+  std::vector<internal_float> m_values;
     
 public:
 
@@ -82,14 +83,14 @@ public:
         variance += (v - mean) * (v - mean);
       }
       variance /= clusters[i].size();
-      m_values.push_back (float(variance));
+      m_values.push_back (internal_float(variance));
     }
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t cluster_index)
+  virtual double value (std::size_t cluster_index)
   {
-    return m_values[cluster_index];
+    return double(m_values[cluster_index]);
   }
   /// \endcond
     

@@ -115,10 +115,10 @@ private:
       {
         std::size_t res = 0;
 
-        std::vector<float> v;
+        std::vector<double> v;
         m_classifier (m_training_set[k], v);
 
-        float max = 0.f;
+        double max = 0.;
         for(std::size_t l = 0; l < v.size(); ++ l)
           if (v[l] > max)
           {
@@ -149,9 +149,9 @@ private:
   struct Feature_training
   {
     std::size_t i;
-    float wmin;
-    float wmax;
-    float factor;
+    double wmin;
+    double wmax;
+    double factor;
 
     bool operator<(const Feature_training& other) const
     {
@@ -161,7 +161,7 @@ private:
 
   const Label_set& m_labels;
   const Feature_set& m_features;
-  std::vector<float> m_weights;
+  std::vector<double> m_weights;
   std::vector<std::vector<Effect> > m_effect_table;
   mutable std::map<Label_handle, std::size_t> m_map_labels;
   mutable std::map<Feature_handle, std::size_t> m_map_features;
@@ -202,12 +202,12 @@ public:
   /*!
     \brief Sets the weight of `feature` (`weight` must be positive).
   */
-  void set_weight (Feature_handle feature, float weight)
+  void set_weight (Feature_handle feature, double weight)
   {
     m_weights[m_map_features[feature]] = weight;
   }
   /// \cond SKIP_IN_MANUAL
-  void set_weight (std::size_t feature, float weight)
+  void set_weight (std::size_t feature, double weight)
   {
     m_weights[feature] = weight;
   }
@@ -216,12 +216,12 @@ public:
   /*!
     \brief Returns the weight of `feature`.
   */
-  float weight (Feature_handle feature) const
+  double weight (Feature_handle feature) const
   {
     return m_weights[m_map_features[feature]];
   }
   /// \cond SKIP_IN_MANUAL
-  float weight (std::size_t feature) const
+  double weight (std::size_t feature) const
   {
     return m_weights[feature];
   }
@@ -261,7 +261,7 @@ public:
 
   /// \cond SKIP_IN_MANUAL
   void operator() (std::size_t item_index,
-                   std::vector<float>& out) const
+                   std::vector<double>& out) const
   {
     out.resize (m_labels.size());
     for (std::size_t l = 0; l < m_labels.size(); ++ l)
@@ -305,8 +305,8 @@ public:
     training set.
   */
   template <typename ConcurrencyTag, typename LabelIndexRange>
-  float train (const LabelIndexRange& ground_truth,
-               unsigned int nb_tests = 300)
+  double train (const LabelIndexRange& ground_truth,
+                unsigned int nb_tests = 300)
   {
     std::vector<std::vector<std::size_t> > training_sets (m_labels.size());
     std::size_t nb_tot = 0;
@@ -328,12 +328,12 @@ public:
       if (training_sets.size() <= i || training_sets[i].empty())
         std::cerr << "WARNING: \"" << m_labels[i]->name() << "\" doesn't have a training set." << std::endl;
 
-    std::vector<float> best_weights (m_features.size(), 1.);
+    std::vector<double> best_weights (m_features.size(), 1.);
 
     std::vector<Feature_training> feature_train;
     std::size_t nb_trials = 100;
-    float wmin = 1e-5f, wmax = 1e5f;
-    float factor = std::pow (wmax/wmin, 1.f / float(nb_trials));
+    double wmin = 1e-5, wmax = 1e5;
+    double factor = std::pow (wmax/wmin, 1. / double(nb_trials));
     
     for (std::size_t j = 0; j < m_features.size(); ++ j)
     {
@@ -341,8 +341,8 @@ public:
       best_weights[j] = weight(j);
 
       std::size_t nb_useful = 0;
-      float min = (std::numeric_limits<float>::max)();
-      float max = -(std::numeric_limits<float>::max)();
+      double min = (std::numeric_limits<double>::max)();
+      double max = -(std::numeric_limits<double>::max)();
 
       set_weight(j, wmin);
       for (std::size_t i = 0; i < 100; ++ i)
@@ -385,16 +385,16 @@ public:
       estimate_feature_effect(j, training_sets);
     }
 
-    std::size_t nb_trials_per_feature = 1 + (std::size_t)(nb_tests / (float)(feature_train.size()));
+    std::size_t nb_trials_per_feature = 1 + (std::size_t)(nb_tests / (double)(feature_train.size()));
     CGAL_CLASSIFICATION_CERR << "Trials = " << nb_tests << ", features = " << feature_train.size()
                              << ", trials per feature = " << nb_trials_per_feature << std::endl;
     for (std::size_t i = 0; i < feature_train.size(); ++ i)
       feature_train[i].factor
         = std::pow (feature_train[i].wmax / feature_train[i].wmin,
-                    1.f / float(nb_trials_per_feature));
+                    1. / double(nb_trials_per_feature));
     
     
-    float best_score = 0.;
+    double best_score = 0.;
     best_score = compute_mean_iou<ConcurrencyTag>(training_sets);
     
     CGAL_CLASSIFICATION_CERR << "TRAINING GLOBALLY: Best score evolution: " << std::endl;
@@ -427,7 +427,7 @@ public:
       {
         estimate_feature_effect(current_feature_changed, training_sets);
 
-        float worst_score = 0.;
+        double worst_score = 0.;
         worst_score = compute_mean_iou<ConcurrencyTag>(training_sets);
         if (worst_score > best_score)
         {
@@ -489,8 +489,8 @@ public:
 
   /// \cond SKIP_IN_MANUAL
   template <typename ConcurrencyTag, typename LabelIndexRange>
-  float train_random (const LabelIndexRange& ground_truth,
-                      unsigned int nb_tests = 300)
+  double train_random (const LabelIndexRange& ground_truth,
+                       unsigned int nb_tests = 300)
   {
     std::vector<std::vector<std::size_t> > training_sets (m_labels.size());
     std::size_t nb_tot = 0;
@@ -507,12 +507,12 @@ public:
       if (training_sets.size() <= i || training_sets[i].empty())
         std::cerr << "WARNING: \"" << m_labels[i]->name() << "\" doesn't have a training set." << std::endl;
 
-    std::vector<float> best_weights (m_features.size(), 1.);
+    std::vector<double> best_weights (m_features.size(), 1.);
 
     std::vector<Feature_training> feature_train;
     std::size_t nb_trials = 100;
-    float wmin = 1e-5, wmax = 1e5;
-    float factor = std::pow (wmax/wmin, 1. / (float)nb_trials);
+    double wmin = 1e-5, wmax = 1e5;
+    double factor = std::pow (wmax/wmin, 1. / (double)nb_trials);
     
     for (std::size_t j = 0; j < m_features.size(); ++ j)
     {
@@ -520,8 +520,8 @@ public:
       best_weights[j] = weight(j);
 
       std::size_t nb_useful = 0;
-      float min = (std::numeric_limits<float>::max)();
-      float max = -(std::numeric_limits<float>::max)();
+      double min = (std::numeric_limits<double>::max)();
+      double max = -(std::numeric_limits<double>::max)();
 
       set_weight(j, wmin);
       for (std::size_t i = 0; i < 100; ++ i)
@@ -567,7 +567,7 @@ public:
     CGAL_CLASSIFICATION_CERR << "Trials = " << nb_tests << ", features = " << feature_train.size() << std::endl;
 
     
-    float best_score = compute_mean_iou<ConcurrencyTag>(training_sets);
+    double best_score = compute_mean_iou<ConcurrencyTag>(training_sets);
     
     CGAL_CLASSIFICATION_CERR << "TRAINING GLOBALLY: Best score evolution: " << std::endl;
 
@@ -579,10 +579,10 @@ public:
       std::size_t j = rand() % feature_train.size();
       set_weight (feature_train[j].i,
                   feature_train[j].wmin + ((feature_train[j].wmax - feature_train[j].wmin)
-                                           * (rand() / float(RAND_MAX))));
+                                           * (rand() / double(RAND_MAX))));
       estimate_feature_effect(feature_train[j].i, training_sets);
 
-      float worst_score = compute_mean_iou<ConcurrencyTag>(training_sets);
+      double worst_score = compute_mean_iou<ConcurrencyTag>(training_sets);
 
       if (worst_score > best_score)
       {
@@ -750,7 +750,7 @@ public:
       std::map<std::string, std::size_t>::iterator
         found = map_n2f.find (name);
       if (found != map_n2f.end())
-        m_weights[found->second] = v.second.get<float>("weight");
+        m_weights[found->second] = v.second.get<double>("weight");
       else
       {
         if (verbose)
@@ -810,7 +810,7 @@ public:
   
 private:
 
-  float value (std::size_t label, std::size_t feature, std::size_t index) const
+  double value (std::size_t label, std::size_t feature, std::size_t index) const
   {
     if (m_effect_table[label][feature] == FAVORING)
       return favored (feature, index);
@@ -820,19 +820,19 @@ private:
       return ignored (feature, index);
   }
   
-  float normalized (std::size_t feature, std::size_t index) const
+  double normalized (std::size_t feature, std::size_t index) const
   {
-    return (std::max) (0.f, (std::min) (1.f, m_features[feature]->value(index) / m_weights[feature]));
+    return (std::max) (0., (std::min) (1., m_features[feature]->value(index) / m_weights[feature]));
   }
-  float favored (std::size_t feature, std::size_t index) const
+  double favored (std::size_t feature, std::size_t index) const
   {
-    return (1.f - normalized (feature, index));
+    return (1. - normalized (feature, index));
   }
-  float penalized (std::size_t feature, std::size_t index) const
+  double penalized (std::size_t feature, std::size_t index) const
   {
     return normalized (feature, index);
   }
-  float ignored (std::size_t, std::size_t) const
+  double ignored (std::size_t, std::size_t) const
   {
     return 0.5f;
   }
@@ -848,7 +848,7 @@ private:
   void estimate_feature_effect (std::size_t feature,
                                 std::vector<std::vector<std::size_t> >& training_sets)
   {
-    std::vector<float> mean (m_labels.size(), 0.);
+    std::vector<double> mean (m_labels.size(), 0.);
                                   
     for (std::size_t j = 0; j < m_labels.size(); ++ j)
     {
@@ -861,13 +861,13 @@ private:
       
       for (std::size_t k = 0; k < training_set_size; ++ k)
       {
-        float val = normalized(feature, training_sets[j][k]);
+        double val = normalized(feature, training_sets[j][k]);
         mean[j] += val;
       }
       mean[j] /= training_set_size;
     }
 
-    std::vector<float> sd (m_labels.size(), 0.);
+    std::vector<double> sd (m_labels.size(), 0.);
         
     for (std::size_t j = 0; j < m_labels.size(); ++ j)
     {
@@ -881,7 +881,7 @@ private:
 #endif
       for (std::size_t k = 0; k < training_set_size; ++ k)
       {
-        float val = normalized(feature, training_sets[j][k]);
+        double val = normalized(feature, training_sets[j][k]);
         sd[j] += (val - mean[j]) * (val - mean[j]);
       }
       sd[j] = std::sqrt (sd[j] / training_set_size);
@@ -895,7 +895,7 @@ private:
   }
 
   template <typename ConcurrencyTag>
-  float compute_mean_iou (std::vector<std::vector<std::size_t> >& training_sets)
+  double compute_mean_iou (std::vector<std::vector<std::size_t> >& training_sets)
   {
     std::vector<std::size_t> true_positives (m_labels.size());
     std::vector<std::size_t> false_positives (m_labels.size());
@@ -925,10 +925,10 @@ private:
         {
           std::size_t res = 0;
 
-          std::vector<float> v;
+          std::vector<double> v;
           (*this) (training_sets[j][k], v);
 
-          float max = 0.f;
+          double max = 0.;
           for(std::size_t l = 0; l < m_labels.size(); ++ l)
             if (v[l] > max)
             {
@@ -946,11 +946,11 @@ private:
         }
     }
     
-    float out = 0.;
+    double out = 0.;
     
     for (std::size_t j = 0; j < m_labels.size(); ++ j)
     {
-      float iou = true_positives[j] / float(true_positives[j] + false_positives[j] + false_negatives[j]);
+      double iou = true_positives[j] / double(true_positives[j] + false_positives[j] + false_negatives[j]);
       out += iou;
     }
 

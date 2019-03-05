@@ -26,6 +26,7 @@
 #include <CGAL/Classification/Feature_base.h>
 #include <CGAL/Kernel_traits.h>
 #include <CGAL/Classification/Local_eigen_analysis.h>
+#include <CGAL/Classification/compressed_float.h>
 #include <vector>
 
 namespace CGAL {
@@ -59,7 +60,7 @@ class Distance_to_plane : public Feature_base
   typedef typename CGAL::Kernel_traits<typename PointMap::value_type>::Kernel Kernel;
   
 #ifdef CGAL_CLASSIFICATION_PRECOMPUTE_FEATURES
-  std::vector<float> distance_to_plane_feature;
+  std::vector<internal_float> distance_to_plane_feature;
 #else
   const PointRange& input;
   PointMap point_map;
@@ -90,14 +91,14 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
 #ifdef CGAL_CLASSIFICATION_PRECOMPUTE_FEATURES
-    return distance_to_plane_feature[pt_index];
+    return double(distance_to_plane_feature[pt_index]);
 #else
-    return float(CGAL::sqrt (CGAL::squared_distance
-                             (get(point_map, *(input.begin()+pt_index)),
-                              eigen.plane<Kernel>(pt_index))));
+    return double(CGAL::sqrt (CGAL::squared_distance
+                              (get(point_map, *(input.begin()+pt_index)),
+                               eigen.plane<Kernel>(pt_index))));
 #endif
   }
   /// \endcond

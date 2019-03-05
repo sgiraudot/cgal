@@ -109,10 +109,10 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
     HSV_Color c = Classification::rgb_to_hsv (get(color_map, *(input.begin()+pt_index)));
-    return c[std::size_t(m_channel)];
+    return double(c[std::size_t(m_channel)]);
   }
   /// \endcond
 };

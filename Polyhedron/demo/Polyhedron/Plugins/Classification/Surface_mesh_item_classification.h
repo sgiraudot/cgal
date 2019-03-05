@@ -50,7 +50,7 @@ public:
   CGAL::Three::Scene_item* item() { return m_mesh; }
   void erase_item() { m_mesh = NULL; }
 
-  void compute_features (std::size_t nb_scales, float voxel_size);
+  void compute_features (std::size_t nb_scales, float voxel_size, bool exact, double exact_scale_factor);
   
   void add_selection_to_training_set (std::size_t label)
   {

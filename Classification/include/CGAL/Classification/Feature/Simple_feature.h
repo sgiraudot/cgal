@@ -41,7 +41,7 @@ namespace Feature {
     is `RandomAccessIterator`.
     \tparam PropertyMap model of `ReadablePropertyMap` whose key
     type is the value type of the iterator of `PointRange` and value type
-    is statically castable to `float`.
+    is statically castable to `double`.
   */
 template <typename InputRange, typename PropertyMap>
 class Simple_feature : public Feature_base
@@ -65,9 +65,9 @@ public:
     this->set_name (name);
   }
   /// \cond SKIP_IN_MANUAL
-  virtual float value (std::size_t pt_index)
+  virtual double value (std::size_t pt_index)
   {
-    return static_cast<float> (get (m_pmap, *(m_input.begin()+pt_index)));
+    return static_cast<double> (get (m_pmap, *(m_input.begin()+pt_index)));
   }
   /// \endcond
 };

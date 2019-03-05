@@ -117,7 +117,7 @@ class Point_set_item_classification : public Item_classification_base
                          xcenter + dx, ycenter + dy, zcenter + dz);
   }
 
-  void compute_features (std::size_t nb_scales, float voxel_size);
+  void compute_features (std::size_t nb_scales, float voxel_size, bool exact, double exact_scale_factor);
 
   std::string feature_statistics() const
   {
@@ -332,10 +332,14 @@ class Point_set_item_classification : public Item_classification_base
     std::vector<int> indices (m_points->point_set()->size(), -1);
 
     m_label_probabilities.clear();
+    m_label_probabilities.resize (m_labels.size());
+    for (std::size_t i = 0; i < m_label_probabilities.size(); ++ i)
+      m_label_probabilities[i].resize (m_points->point_set()->size(), -1);
+    
     if (method == 0)
-      CGAL::Classification::classify<Concurrency_tag> (*(m_points->point_set()),
-                                                       m_labels, classifier,
-                                                       indices, m_label_probabilities);
+      CGAL::Classification::classify_detailed_output<Concurrency_tag> (*(m_points->point_set()),
+                                                                       m_labels, classifier,
+                                                                       indices, m_label_probabilities);
     else if (method == 1)
     {
       if (m_clusters.empty()) // Use real local smoothing

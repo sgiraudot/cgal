@@ -108,7 +108,7 @@ template <typename GeomTraits,
 #if defined(DOXYGEN_RUNNING)
           typename DiagonalizeTraits>
 #else
-          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float,3> >
+          typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double,3> >
 #endif
 class Point_set_feature_generator
 {
@@ -165,10 +165,11 @@ private:
     Neighborhood* neighborhood;
     Planimetric_grid* grid;
     Local_eigen_analysis* eigen;
-    float voxel_size;
-    
+    double voxel_size;
+
+    // Inexact approximated scale
     Scale (const PointRange& input, PointMap point_map,
-           const Iso_cuboid_3& bbox, float voxel_size,
+           const Iso_cuboid_3& bbox, double voxel_size,
            Planimetric_grid* lower_grid = NULL)
       : voxel_size (voxel_size)
     {
@@ -192,7 +193,7 @@ private:
         (Local_eigen_analysis::create_from_point_set
          (input, point_map, neighborhood->k_neighbor_query(12), ConcurrencyTag(), DiagonalizeTraits()));
       
-      float range = eigen->mean_range();
+      double range = eigen->mean_range();
       if (this->voxel_size < 0)
         this->voxel_size = range;
       t.stop();
@@ -209,6 +210,52 @@ private:
       CGAL_CLASSIFICATION_CERR << "Planimetric grid computed in " << t.time() << " second(s)" << std::endl;
       t.reset();
     }
+
+    // Exact scale
+    Scale (const PointRange& input, PointMap point_map,
+           const Iso_cuboid_3& bbox, double voxel_size,
+           Neighborhood* precomputed_neighborhood)
+      : voxel_size (voxel_size)
+    {
+      CGAL::Real_timer t;
+      if (precomputed_neighborhood == NULL)
+      {
+        t.start();
+        neighborhood = new Neighborhood (input, point_map);
+        t.stop();
+        CGAL_CLASSIFICATION_CERR << "Neighborhood computed in " << t.time() << " second(s)" << std::endl;
+      }
+      else
+        neighborhood = precomputed_neighborhood;
+      
+      t.reset();
+      t.start();
+
+      if (voxel_size < 0)
+        eigen = new Local_eigen_analysis
+          (Local_eigen_analysis::create_from_point_set
+           (input, point_map, neighborhood->k_neighbor_query(12), ConcurrencyTag(), DiagonalizeTraits()));
+      else
+        eigen = new Local_eigen_analysis
+          (Local_eigen_analysis::create_from_point_set
+           (input, point_map, neighborhood->sphere_neighbor_query(voxel_size),
+            ConcurrencyTag(), DiagonalizeTraits()));
+      
+      double range = eigen->mean_range();
+      if (this->voxel_size < 0)
+        this->voxel_size = range;
+      t.stop();
+      CGAL_CLASSIFICATION_CERR << "Eigen values computed in " << t.time() << " second(s)" << std::endl;
+      CGAL_CLASSIFICATION_CERR << "Range = " << range << std::endl;
+      t.reset();
+      t.start();
+
+      grid = new Planimetric_grid (input, point_map, bbox, this->voxel_size);
+      t.stop();
+      CGAL_CLASSIFICATION_CERR << "Planimetric grid computed in " << t.time() << " second(s)" << std::endl;
+      t.reset();
+    }
+    
     ~Scale()
     {
       if (neighborhood != NULL)
@@ -218,20 +265,9 @@ private:
       delete eigen;
     }
 
-    void reduce_memory_footprint(bool delete_neighborhood)
-    {
-      delete grid;
-      grid = NULL;
-      if (delete_neighborhood)
-      {
-        delete neighborhood;
-        neighborhood = NULL;
-      }
-    }
-
-    float grid_resolution() const { return voxel_size; }
-    float radius_neighbors() const { return voxel_size * 3; }
-    float radius_dtm() const { return voxel_size * 10; }
+    double grid_resolution() const { return voxel_size; }
+    double radius_neighbors() const { return voxel_size * 3; }
+    double radius_dtm() const { return voxel_size * 10; }
     
   };
 
@@ -266,7 +302,9 @@ public:
   Point_set_feature_generator(const PointRange& input,
                               PointMap point_map,
                               std::size_t nb_scales,
-                              float voxel_size = -1.f)
+                              double voxel_size = -1.,
+                              bool exact_scales = false,
+                              double exact_scales_factor = 2.)
     : m_input (input), m_point_map (point_map)
   {
     m_bbox = CGAL::bounding_box
@@ -276,17 +314,34 @@ public:
     CGAL::Real_timer t; t.start();
     
     m_scales.reserve (nb_scales);
-    
-    m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size));
 
-    if (voxel_size == -1.f)
-      voxel_size = m_scales[0]->grid_resolution();
-    
-    for (std::size_t i = 1; i < nb_scales; ++ i)
+    if (exact_scales)
     {
-      voxel_size *= 2;
-      m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, m_scales[i-1]->grid));
+      m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, (Neighborhood*)NULL));
+
+      if (voxel_size == -1.f)
+        voxel_size = m_scales[0]->grid_resolution();
+    
+      for (std::size_t i = 1; i < nb_scales; ++ i)
+      {
+        voxel_size *= exact_scales_factor;
+        m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, m_scales[0]->neighborhood));
+      }
     }
+    else // inexact scales with factor 2
+    {
+      m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size));
+
+      if (voxel_size == -1.f)
+        voxel_size = m_scales[0]->grid_resolution();
+    
+      for (std::size_t i = 1; i < nb_scales; ++ i)
+      {
+        voxel_size *= 2;
+        m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, m_scales[i-1]->grid));
+      }
+    }
+    
     t.stop();
     CGAL_CLASSIFICATION_CERR << "Scales computed in " << t.time() << " second(s)" << std::endl;
     t.reset();
@@ -309,7 +364,7 @@ public:
                               VectorMap normal_map = VectorMap(),
                               ColorMap color_map = ColorMap(),
                               EchoMap echo_map = EchoMap(),
-                              float voxel_size = -1.f)
+                              double voxel_size = -1.f)
     : m_input (input), m_point_map (point_map)
   {
     m_bbox = CGAL::bounding_box
@@ -358,13 +413,6 @@ public:
     clear();
   }
 
-  void reduce_memory_footprint()
-  {
-    for (std::size_t i = 0; i < m_scales.size(); ++ i)
-    {
-      m_scales[i]->reduce_memory_footprint(i > 0);
-    }
-  }
   /// \endcond
 
   /// \name Feature Generation
@@ -505,7 +553,7 @@ public:
     resolution is the length and width of a cell of the
     `Planimetric_grid` defined at this scale.
   */
-  float grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
+  double grid_resolution(std::size_t scale = 0) const { return m_scales[scale]->grid_resolution(); }
   /*!
 
     \brief Returns the radius used for neighborhood queries at scale
@@ -513,13 +561,13 @@ public:
     a geometric point of view at this scale (that is to say that
     encloses a few cells of `Planimetric_grid`).
   */
-  float radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
+  double radius_neighbors(std::size_t scale = 0) const { return m_scales[scale]->radius_neighbors(); }
   /*!
     \brief Returns the radius used for digital terrain modeling at
     scale `scale`. This radius represents the minimum size of a
     building at this scale.
   */
-  float radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
+  double radius_dtm(std::size_t scale = 0) const { return m_scales[scale]->radius_dtm(); }
 
   /// @}
 
@@ -528,8 +576,17 @@ private:
 
   void clear()
   {
+    // Check if exact scales where used, to prevent from deleting the
+    // same neighborhood several times
+    bool exact = (m_scales.size() > 1 && m_scales[0]->neighborhood == m_scales[1]->neighborhood);
+        
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
+    {
+      if (exact && i != 0)
+        m_scales[i]->neighborhood = NULL;
       delete m_scales[i];
+    }
+    
     m_scales.clear();
   }
 

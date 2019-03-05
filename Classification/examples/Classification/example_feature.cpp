@@ -50,13 +50,13 @@ public:
     this->set_name ("my_feature");
   }
 
-  float value (std::size_t pt_index)
+  double value (std::size_t pt_index)
   {
     if (xmin < range[pt_index].x() && range[pt_index].x() < xmax &&
         ymin < range[pt_index].y() && range[pt_index].y() < ymax)
-      return 1.f;
+      return 1.;
     else
-      return 0.f;
+      return 0.;
   }
     
 };

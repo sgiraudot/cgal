@@ -66,7 +66,7 @@ public:
     the item at position `index`. This method must be implemented by
     inherited classes.
   */
-  virtual float value (std::size_t index) = 0;
+  virtual double value (std::size_t index) = 0;
 
 };
 

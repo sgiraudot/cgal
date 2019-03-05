@@ -119,8 +119,20 @@ public:
   /// \cond SKIP_IN_MANUAL
   ~Random_forest_classifier ()
   {
+    clear();
+  }
+
+  void clear ()
+  {
     if (m_rfc != NULL)
       delete m_rfc;
+    m_rfc = NULL;
+  }
+
+  void transfer (Random_forest_classifier& other)
+  {
+    m_rfc = other.m_rfc;
+    other.m_rfc = NULL;
   }
   /// \endcond
   
@@ -192,6 +204,10 @@ public:
 
     std::vector<int> gt;
     std::vector<float> ft;
+
+#ifdef CGAL_CLASSIFICATION_VERBOSE
+    std::vector<std::size_t> count (m_labels.size(), 0);
+#endif
     
     for (std::size_t i = 0; i < ground_truth.size(); ++ i)
     {
@@ -199,12 +215,19 @@ public:
       if (g != -1)
       {
         for (std::size_t f = 0; f < m_features.size(); ++ f)
-          ft.push_back(m_features[f]->value(i));
+          ft.push_back(float(m_features[f]->value(i)));
         gt.push_back(g);
+#ifdef CGAL_CLASSIFICATION_VERBOSE
+        count[std::size_t(g)] ++;
+#endif
       }
     }
 
-    CGAL_CLASSIFICATION_CERR << "Using " << gt.size() << " inliers" << std::endl;
+    CGAL_CLASSIFICATION_CERR << "Using " << gt.size() << " inliers:" << std::endl;
+#ifdef CGAL_CLASSIFICATION_VERBOSE
+    for (std::size_t i = 0; i < m_labels.size(); ++ i)
+      std::cerr << " * " << m_labels[i]->name() << ": " << count[i] << " inlier(s)" << std::endl;
+#endif
 
     CGAL::internal::liblearning::DataView2D<int> label_vector (&(gt[0]), gt.size(), 1);    
     CGAL::internal::liblearning::DataView2D<float> feature_vector(&(ft[0]), gt.size(), ft.size() / gt.size());
@@ -225,21 +248,21 @@ public:
   }
 
   /// \cond SKIP_IN_MANUAL
-  void operator() (std::size_t item_index, std::vector<float>& out) const
+  void operator() (std::size_t item_index, std::vector<double>& out) const
   {
     out.resize (m_labels.size(), 0.);
     
     std::vector<float> ft;
     ft.reserve (m_features.size());
     for (std::size_t f = 0; f < m_features.size(); ++ f)
-      ft.push_back (m_features[f]->value(item_index));
+      ft.push_back (float(m_features[f]->value(item_index)));
 
     std::vector<float> prob (m_labels.size());
 
     m_rfc->evaluate (ft.data(), prob.data());
     
     for (std::size_t i = 0; i < out.size(); ++ i)
-      out[i] = (std::min) (1.f, (std::max) (0.f, prob[i]));
+      out[i] = (std::min) (1., (std::max) (0., double(prob[i])));
   }
 
   /// \endcond

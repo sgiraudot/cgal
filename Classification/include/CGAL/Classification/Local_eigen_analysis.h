@@ -65,7 +65,7 @@ namespace Classification {
 class Local_eigen_analysis
 {
 public:
-  typedef CGAL::cpp11::array<float, 3> Eigenvalues; ///< Eigenvalues (sorted in ascending order)
+  typedef CGAL::cpp11::array<double, 3> Eigenvalues; ///< Eigenvalues (sorted in ascending order)
   
 private:
 
@@ -77,7 +77,7 @@ private:
     const PointRange& m_input;
     PointMap m_point_map;
     const NeighborQuery& m_neighbor_query;
-    float& m_mean_range;
+    double& m_mean_range;
     tbb::mutex& m_mutex;
     
   public:
@@ -86,7 +86,7 @@ private:
                           const PointRange& input,
                           PointMap point_map,
                           const NeighborQuery& neighbor_query,
-                          float& mean_range,
+                          double& mean_range,
                           tbb::mutex& mutex)
       : m_eigen (eigen), m_input (input), m_point_map (point_map),
         m_neighbor_query (neighbor_query), m_mean_range (mean_range), m_mutex (mutex)
@@ -106,9 +106,9 @@ private:
           neighbor_points.push_back (get(m_point_map, *(m_input.begin()+neighbors[j])));
 
         m_mutex.lock();
-        m_mean_range += float(CGAL::sqrt
-                              (CGAL::squared_distance (get(m_point_map, *(m_input.begin() + i)),
-                                                       get(m_point_map, *(m_input.begin() + neighbors.back())))));
+        m_mean_range += double(CGAL::sqrt
+                               (CGAL::squared_distance (get(m_point_map, *(m_input.begin() + i)),
+                                                        get(m_point_map, *(m_input.begin() + neighbors.back())))));
         m_mutex.unlock();
           
         m_eigen.compute<typename PointMap::value_type,
@@ -128,7 +128,7 @@ private:
     Local_eigen_analysis& m_eigen;
     const FaceListGraph& m_input;
     const NeighborQuery& m_neighbor_query;
-    float& m_mean_range;
+    double& m_mean_range;
     tbb::mutex& m_mutex;
     
   public:
@@ -136,7 +136,7 @@ private:
     Compute_eigen_values_graph (Local_eigen_analysis& eigen,
                                 const FaceListGraph& input,
                                 const NeighborQuery& neighbor_query,
-                                float& mean_range,
+                                double& mean_range,
                                 tbb::mutex& mutex)
       : m_eigen (eigen), m_input (input),
         m_neighbor_query (neighbor_query), m_mean_range (mean_range), m_mutex (mutex)
@@ -199,8 +199,8 @@ private:
 
   };
 
-  typedef CGAL::cpp11::array<float, 3> float3;
-  typedef CGAL::cpp11::array<float, 2> float2;
+  typedef CGAL::cpp11::array<internal_float, 3> float3;
+  typedef CGAL::cpp11::array<internal_float, 2> float2;
   typedef CGAL::cpp11::array<compressed_float, 2> cfloat2;
   
   struct Content
@@ -208,7 +208,7 @@ private:
     std::vector<cfloat2> eigenvalues;
     std::vector<float3> centroids;
     std::vector<float2> smallest_eigenvectors;
-    float mean_range;
+    double mean_range;
   };
 
   boost::shared_ptr<Content> m_content; // To avoid copies with named constructors
@@ -258,7 +258,7 @@ public:
 #if defined(DOXYGEN_RUNNING)
             typename DiagonalizeTraits>
 #else
-            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float, 3> >
+            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double, 3> >
 #endif
   static Local_eigen_analysis create_from_point_set(const PointRange& input,
                                                     PointMap point_map,
@@ -297,9 +297,9 @@ public:
         for (std::size_t j = 0; j < neighbors.size(); ++ j)
           neighbor_points.push_back (get(point_map, *(input.begin()+neighbors[j])));
 
-        out.m_content->mean_range += float(CGAL::sqrt (CGAL::squared_distance
-                                          (get(point_map, *(input.begin() + i)),
-                                           get(point_map, *(input.begin() + neighbors.back())))));
+        out.m_content->mean_range += double(CGAL::sqrt (CGAL::squared_distance
+                                                        (get(point_map, *(input.begin() + i)),
+                                                         get(point_map, *(input.begin() + neighbors.back())))));
         
         out.compute<typename PointMap::value_type, DiagonalizeTraits>
           (i, get(point_map, *(input.begin()+i)), neighbor_points);
@@ -341,7 +341,7 @@ public:
 #if defined(DOXYGEN_RUNNING)
             typename DiagonalizeTraits>
 #else
-            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float, 3> >
+            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double, 3> >
 #endif
   static Local_eigen_analysis create_from_face_graph (const FaceListGraph& input,
                                                       const NeighborQuery& neighbor_query,
@@ -425,7 +425,7 @@ public:
 #if defined(DOXYGEN_RUNNING)
             typename DiagonalizeTraits>
 #else
-            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<float, 3> >
+            typename DiagonalizeTraits = CGAL::Default_diagonalize_traits<double, 3> >
 #endif
   static Local_eigen_analysis create_from_point_clusters (const ClusterRange& input,
                                                           const ConcurrencyTag& = ConcurrencyTag(),
@@ -501,32 +501,32 @@ public:
   {
     const cfloat2& uc = m_content->eigenvalues[index];
     Eigenvalues out;
-    out[1] = decompress_float(uc[0]);
-    out[2] = decompress_float(uc[1]);
-    out[0] = 1.f - (out[1] + out[2]);
+    out[1] = double(decompress_float(uc[0]));
+    out[2] = double(decompress_float(uc[1]));
+    out[0] = 1. - (out[1] + out[2]);
     return out;
   }
 
   /// @}
 
   /// \cond SKIP_IN_MANUAL
-  float mean_range() const { return m_content->mean_range; }
+  double mean_range() const { return m_content->mean_range; }
   /// \endcond
 
 private:
 
   template <typename FaceListGraph>
-  float face_radius (typename boost::graph_traits<FaceListGraph>::face_descriptor& fd,
-                     const FaceListGraph& g)
+  double face_radius (typename boost::graph_traits<FaceListGraph>::face_descriptor& fd,
+                      const FaceListGraph& g)
   {
     typedef typename boost::graph_traits<FaceListGraph>::halfedge_descriptor halfedge_descriptor;
     
-    float out = 0.f;
+    double out = 0.;
     BOOST_FOREACH(halfedge_descriptor hd, halfedges_around_face(halfedge(fd, g), g))
     {
       out = (std::max)(out,
-                       float(CGAL::squared_distance (get(get (CGAL::vertex_point, g), source(hd,g)),
-                                                     get(get (CGAL::vertex_point, g), target(hd,g)))));
+                       double(CGAL::squared_distance (get(get (CGAL::vertex_point, g), source(hd,g)),
+                                                      get(get (CGAL::vertex_point, g), target(hd,g)))));
     }
     return out;
   }
@@ -539,37 +539,37 @@ private:
     if (neighbor_points.size() == 0)
     {
       m_content->eigenvalues[index] = make_array (compressed_float(0), compressed_float(0));
-      m_content->centroids[index] = make_array(float(query.x()), float(query.y()), float(query.z()) );
-      m_content->smallest_eigenvectors[index] = make_array( 0.f, 0.f );
+      m_content->centroids[index] = make_array(internal_float(query.x()), internal_float(query.y()), internal_float(query.z()) );
+      m_content->smallest_eigenvectors[index] = make_array( internal_float(0), internal_float(0) );
       return;
     }
 
     Point centroid = CGAL::centroid (neighbor_points.begin(), neighbor_points.end());
-    m_content->centroids[index] = make_array( float(centroid.x()), float(centroid.y()), float(centroid.z()) );
+    m_content->centroids[index] = make_array( internal_float(centroid.x()), internal_float(centroid.y()), internal_float(centroid.z()) );
     
-    CGAL::cpp11::array<float, 6> covariance = make_array( 0.f, 0.f, 0.f, 0.f, 0.f, 0.f );
+    CGAL::cpp11::array<double, 6> covariance = make_array( 0., 0., 0., 0., 0., 0. );
       
     for (std::size_t i = 0; i < neighbor_points.size(); ++ i)
     {
       Vector d = neighbor_points[i] - centroid;
-      covariance[0] += float(d.x () * d.x ());
-      covariance[1] += float(d.x () * d.y ());
-      covariance[2] += float(d.x () * d.z ());
-      covariance[3] += float(d.y () * d.y ());
-      covariance[4] += float(d.y () * d.z ());
-      covariance[5] += float(d.z () * d.z ());
+      covariance[0] += double(d.x () * d.x ());
+      covariance[1] += double(d.x () * d.y ());
+      covariance[2] += double(d.x () * d.z ());
+      covariance[3] += double(d.y () * d.y ());
+      covariance[4] += double(d.y () * d.z ());
+      covariance[5] += double(d.z () * d.z ());
     }
 
-    CGAL::cpp11::array<float, 3> evalues = make_array( 0.f, 0.f, 0.f );
-    CGAL::cpp11::array<float, 9> evectors = make_array( 0.f, 0.f, 0.f,
-                                               0.f, 0.f, 0.f,
-                                               0.f, 0.f, 0.f );
+    CGAL::cpp11::array<double, 3> evalues = make_array( 0., 0., 0. );
+    CGAL::cpp11::array<double, 9> evectors = make_array( 0., 0., 0.,
+                                                         0., 0., 0.,
+                                                         0., 0., 0. );
 
     DiagonalizeTraits::diagonalize_selfadjoint_covariance_matrix
       (covariance, evalues, evectors);
 
     // Normalize
-    float sum = evalues[0] + evalues[1] + evalues[2];
+    double sum = evalues[0] + evalues[1] + evalues[2];
     if (sum > 0.f)
       for (std::size_t i = 0; i < 3; ++ i)
         evalues[i] = evalues[i] / sum;
@@ -581,7 +581,7 @@ private:
     if (sum > 0.f)
       for (std::size_t i = 0; i < 3; ++ i)
         evectors[i] = evectors[i] / sum;
-    m_content->smallest_eigenvectors[index] = make_array( float(evectors[0]), float(evectors[1]) );
+    m_content->smallest_eigenvectors[index] = make_array( internal_float(evectors[0]), internal_float(evectors[1]) );
   }
 
   template <typename FaceListGraph, typename DiagonalizeTraits>
@@ -608,7 +608,7 @@ private:
       Point c = CGAL::centroid(tr.begin(),
                                tr.end(), Kernel(), CGAL::Dimension_tag<2>());
 
-      m_content->centroids[get(get(CGAL::face_index,g), query)] = {{ float(c.x()), float(c.y()), float(c.z()) }};
+      m_content->centroids[get(get(CGAL::face_index,g), query)] = {{ internal_float(c.x()), internal_float(c.y()), internal_float(c.z()) }};
       
       m_content->smallest_eigenvectors[get(get(CGAL::face_index,g), query)] = {{ 0.f, 0.f }};
       return;
@@ -627,7 +627,7 @@ private:
                    get(get (CGAL::vertex_point, g), target(next(next(halfedge(fd, g), g), g), g))));
     }
 
-    CGAL::cpp11::array<float, 6> covariance = {{ 0.f, 0.f, 0.f, 0.f, 0.f, 0.f }};
+    CGAL::cpp11::array<double, 6> covariance = {{ 0., 0., 0., 0., 0., 0. }};
     Point c = CGAL::centroid(triangles.begin(),
                              triangles.end(), Kernel(), CGAL::Dimension_tag<2>());
 
@@ -635,18 +635,18 @@ private:
                                                   c, Kernel(), (Triangle*)NULL, CGAL::Dimension_tag<2>(),
                                                   DiagonalizeTraits());
       
-    m_content->centroids[get(get(CGAL::face_index,g), query)] = {{ float(c.x()), float(c.y()), float(c.z()) }};
+    m_content->centroids[get(get(CGAL::face_index,g), query)] = {{ internal_float(c.x()), internal_float(c.y()), internal_float(c.z()) }};
     
-    CGAL::cpp11::array<float, 3> evalues = {{ 0.f, 0.f, 0.f }};
-    CGAL::cpp11::array<float, 9> evectors = {{ 0.f, 0.f, 0.f,
-                                               0.f, 0.f, 0.f,
-                                               0.f, 0.f, 0.f }};
+    CGAL::cpp11::array<double, 3> evalues = {{ 0., 0., 0. }};
+    CGAL::cpp11::array<double, 9> evectors = {{ 0., 0., 0.,
+                                                0., 0., 0.,
+                                                0., 0., 0. }};
 
     DiagonalizeTraits::diagonalize_selfadjoint_covariance_matrix
       (covariance, evalues, evectors);
 
     // Normalize
-    float sum = evalues[0] + evalues[1] + evalues[2];
+    double sum = evalues[0] + evalues[1] + evalues[2];
     if (sum > 0.f)
       for (std::size_t i = 0; i < 3; ++ i)
         evalues[i] = evalues[i] / sum;
@@ -659,7 +659,7 @@ private:
     if (sum > 0.f)
       for (std::size_t i = 0; i < 3; ++ i)
         evectors[i] = evectors[i] / sum;
-    m_content->smallest_eigenvectors[get(get(CGAL::face_index,g), query)] = {{ float(evectors[0]), float(evectors[1]), }};
+    m_content->smallest_eigenvectors[get(get(CGAL::face_index,g), query)] = {{ internal_float(evectors[0]), internal_float(evectors[1]), }};
   }
   
 };

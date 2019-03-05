@@ -28,15 +28,21 @@ namespace Classification {
 
 /// \cond SKIP_IN_MANUAL
 
-#if defined(CGAL_CLASSIFICATION_DO_NOT_COMPRESS_FLOATS)
-typedef float compressed_float;
+#if defined(CGAL_CLASSIFICATION_DO_NOT_USE_FLOATS_INTERNALLY)
+typedef double internal_float;
+#else
+typedef float internal_float;
+#endif
 
-inline float compress_float (const float& f, const float&, const float&)
+#if defined(CGAL_CLASSIFICATION_DO_NOT_COMPRESS_FLOATS)
+typedef internal_float compressed_float;
+
+inline internal_float compress_float (const internal_float& f, const internal_float& = 0.f, const internal_float& = 1.f)
 {
   return f;
 }
 
-inline float decompress_float<float> (const float& t, const float&, const float&)
+inline internal_float decompress_float (const internal_float& t, const internal_float& = 0.f, const internal_float& = 1.f)
 {
   return t;
 }
@@ -48,16 +54,16 @@ typedef unsigned short compressed_float;
 #  else // Default = compress with unsigned char
 typedef unsigned char compressed_float;
 #  endif
- 
-inline compressed_float compress_float (const float& f, const float& min = 0.f, const float& max = 1.f)
+
+inline compressed_float compress_float (const internal_float& f, const internal_float& min = 0.f, const internal_float& max = 1.f)
 {
   return static_cast<compressed_float>
-    (float(std::numeric_limits<compressed_float>::max()) * (f - min) / (max - min));
+    (internal_float(std::numeric_limits<compressed_float>::max()) * (f - min) / (max - min));
 }
 
-inline float decompress_float (const compressed_float& t, const float& min = 0.f, const float& max = 1.f)
+inline internal_float decompress_float (const compressed_float& t, const internal_float& min = 0.f, const internal_float& max = 1.f)
 {
-  return ((max - min) * (t / float(std::numeric_limits<compressed_float>::max())) + min);
+  return ((max - min) * (t / internal_float(std::numeric_limits<compressed_float>::max())) + min);
 }
   
 #endif
