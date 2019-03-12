@@ -67,7 +67,7 @@ class Elevation : public Feature_base
 
   const PointRange& input;
   PointMap point_map;
-  const Grid& grid;
+  const Grid* grid;
   Image_cfloat dtm;
   std::vector<compressed_float> values;
   internal_float z_max;
@@ -87,7 +87,7 @@ public:
              PointMap point_map,
              const Grid& grid,
              double radius_dtm = -1.)
-    : input(input), point_map(point_map), grid(grid)
+    : input(input), point_map(point_map), grid(&grid)
   {
     this->set_name ("elevation");
     if (radius_dtm < 0.)
@@ -177,14 +177,55 @@ public:
 
   }
 
+  template <typename NeighborQuery>
+  Elevation (const PointRange& input,
+             PointMap point_map,
+             const NeighborQuery& query)
+    : input(input), point_map(point_map), grid(NULL)
+  {
+    this->set_name ("elevation_2");
+
+    z_max = internal_float(0);
+    z_min = std::numeric_limits<internal_float>::max();
+
+    std::vector<internal_float> exact_values;
+    exact_values.reserve(input.size());
+
+    std::vector<std::size_t> neighborhood;
+    for (typename PointRange::const_iterator it = input.begin();
+         it != input.end(); ++ it)
+    {
+      query (get (point_map, *it), std::back_inserter (neighborhood));
+
+      std::nth_element (neighborhood.begin(), neighborhood.begin() + (neighborhood.size() / 10),
+                        neighborhood.end(),
+                        [&](const std::size_t& a, const std::size_t& b) -> bool
+                        {
+                          return get(point_map, *(input.begin()+a)).z() < get(point_map, *(input.begin()+b)).z();
+                        });
+      double z = get (point_map, *(input.begin() + neighborhood[neighborhood.size() / 10])).z();
+
+      exact_values.push_back (z);
+      z_min = (std::min)(internal_float(z), z_min);
+      z_max = (std::max)(internal_float(z), z_max);
+      
+      neighborhood.clear();
+    }
+
+    values.reserve (input.size());
+    for (std::size_t i = 0; i < exact_values.size(); ++ i)
+      values.push_back (compress_float (exact_values[i], z_min, z_max));
+    
+  }
+  
   /// \cond SKIP_IN_MANUAL
   virtual double value (std::size_t pt_index)
   {
     double d = 0.;
     if (values.empty())
     {
-      std::size_t I = grid.x(pt_index);
-      std::size_t J = grid.y(pt_index);
+      std::size_t I = grid->x(pt_index);
+      std::size_t J = grid->y(pt_index);
       d = double(decompress_float (dtm(I,J), z_min, z_max));
     }
     else

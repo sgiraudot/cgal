@@ -59,6 +59,8 @@
 #include <CGAL/Real_timer.h>
 #include <CGAL/demangle.h>
 
+// #define CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+
 
 namespace CGAL {
 
@@ -123,9 +125,13 @@ public:
   
   typedef Classification::Planimetric_grid
   <GeomTraits, PointRange, PointMap>                    Planimetric_grid;
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+  typedef Classification::Point_set_neighborhood
+  <GeomTraits, PointRange, PointMap, Dimension_tag<2> > Neighborhood_2;
+#endif
   typedef Classification::Point_set_neighborhood
   <GeomTraits, PointRange, PointMap>                    Neighborhood;
-  typedef Classification::Local_eigen_analysis           Local_eigen_analysis;
+  typedef Classification::Local_eigen_analysis          Local_eigen_analysis;
 
   /// \cond SKIP_IN_MANUAL
   typedef Classification::Feature_handle                 Feature_handle;
@@ -163,6 +169,9 @@ private:
   struct Scale
   {
     Neighborhood* neighborhood;
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+    Neighborhood_2* neighborhood_2;
+#endif
     Planimetric_grid* grid;
     Local_eigen_analysis* eigen;
     double voxel_size;
@@ -176,9 +185,19 @@ private:
       CGAL::Real_timer t;
       t.start();
       if (lower_grid == NULL)
+      {
         neighborhood = new Neighborhood (input, point_map);
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+        neighborhood_2 = new Neighborhood_2 (input, point_map);
+#endif
+      }
       else
+      {
         neighborhood = new Neighborhood (input, point_map, voxel_size);
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+        neighborhood_2 = new Neighborhood_2 (input, point_map, voxel_size);
+#endif
+      }
       t.stop();
       
       if (lower_grid == NULL)
@@ -214,7 +233,11 @@ private:
     // Exact scale
     Scale (const PointRange& input, PointMap point_map,
            const Iso_cuboid_3& bbox, double voxel_size,
-           Neighborhood* precomputed_neighborhood)
+           Neighborhood* precomputed_neighborhood
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+           ,Neighborhood_2* precomputed_neighborhood_2
+#endif
+      )
       : voxel_size (voxel_size)
     {
       CGAL::Real_timer t;
@@ -222,11 +245,19 @@ private:
       {
         t.start();
         neighborhood = new Neighborhood (input, point_map);
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+        neighborhood_2 = new Neighborhood_2 (input, point_map);
+#endif
         t.stop();
         CGAL_CLASSIFICATION_CERR << "Neighborhood computed in " << t.time() << " second(s)" << std::endl;
       }
       else
+      {
         neighborhood = precomputed_neighborhood;
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+        neighborhood_2 = precomputed_neighborhood_2;
+#endif
+      }
       
       t.reset();
       t.start();
@@ -260,6 +291,10 @@ private:
     {
       if (neighborhood != NULL)
         delete neighborhood;
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+      if (neighborhood_2 != NULL)
+        delete neighborhood_2;
+#endif
       if (grid != NULL)
         delete grid;
       delete eigen;
@@ -267,7 +302,8 @@ private:
 
     double grid_resolution() const { return voxel_size; }
     double radius_neighbors() const { return voxel_size * 3; }
-    double radius_dtm() const { return voxel_size * 10; }
+//    double radius_dtm() const { return voxel_size * 10; }
+    double radius_dtm() const { return voxel_size * 20; }
     
   };
 
@@ -317,7 +353,11 @@ public:
 
     if (exact_scales)
     {
-      m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, (Neighborhood*)NULL));
+      m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, (Neighborhood*)NULL
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+                                     , NULL
+#endif
+                            ));
 
       if (voxel_size == -1.f)
         voxel_size = m_scales[0]->grid_resolution();
@@ -325,7 +365,13 @@ public:
       for (std::size_t i = 1; i < nb_scales; ++ i)
       {
         voxel_size *= exact_scales_factor;
-        m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size, m_scales[0]->neighborhood));
+        m_scales.push_back (new Scale (m_input, m_point_map, m_bbox, voxel_size,
+                                       m_scales[0]->neighborhood
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+                                       , m_scales[0]->neighborhood_2
+                                       
+#endif
+                              ));
       }
     }
     else // inexact scales with factor 2
@@ -445,7 +491,12 @@ public:
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Dispersion> (i, m_input, m_point_map, grid(i), radius_neighbors(i));
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
+    {
       features.add_with_scale_id<Elevation> (i, m_input, m_point_map, grid(i), radius_dtm(i));
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+      features.add_with_scale_id<Elevation> (i, m_input, m_point_map, m_scales[i]->neighborhood_2->sphere_neighbor_query(radius_dtm(i)));
+#endif
+    }
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Height_below> (i, m_input, m_point_map, grid(i));
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
@@ -583,7 +634,12 @@ private:
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
     {
       if (exact && i != 0)
+      {
         m_scales[i]->neighborhood = NULL;
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+        m_scales[i]->neighborhood_2 = NULL;
+#endif
+      }
       delete m_scales[i];
     }
     
