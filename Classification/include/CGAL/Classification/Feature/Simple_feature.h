@@ -72,6 +72,92 @@ public:
   /// \endcond
 };
 
+class Mean_of_feature : public Feature_base
+{
+  std::vector<internal_float> m_values;
+  
+public:
+  
+  template <typename InputRange, typename ItemMap, typename PropertyMap, typename NeighborQuery>
+  Mean_of_feature (const InputRange& input,
+                   ItemMap item_map,
+                   PropertyMap property_map,
+                   const NeighborQuery& neighbor_query,
+                   const std::string& name)
+  {
+    this->set_name ("mean_" + name);
+
+    m_values.reserve(input.size());
+
+    std::vector<std::size_t> neighborhood;
+    for (typename InputRange::const_iterator it = input.begin();
+         it != input.end(); ++ it)
+    {
+      neighbor_query (get (item_map, *it), std::back_inserter (neighborhood));
+
+      double mean = 0.;
+      for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+        mean += get (property_map, *(input.begin() + neighborhood[i]));
+      m_values.push_back (mean / neighborhood.size());
+
+      neighborhood.clear();
+    }
+
+  }
+  /// \cond SKIP_IN_MANUAL
+  virtual double value (std::size_t pt_index)
+  {
+    return static_cast<double> (m_values[pt_index]);
+  }
+  /// \endcond
+};
+
+class Variance_of_feature : public Feature_base
+{
+  std::vector<internal_float> m_values;
+  
+public:
+  
+  template <typename InputRange, typename ItemMap, typename PropertyMap, typename NeighborQuery>
+  Variance_of_feature (const InputRange& input,
+                       const ItemMap& item_map,
+                       PropertyMap property_map,
+                       const NeighborQuery& neighbor_query,
+                       Feature_handle mean_feature,
+                       const std::string& name)
+  {
+    this->set_name ("variance_" + name);
+
+    m_values.reserve(input.size());
+
+    std::vector<std::size_t> neighborhood;
+    std::size_t idx = 0;
+    for (typename InputRange::const_iterator it = input.begin();
+         it != input.end(); ++ it, ++ idx)
+    {
+      neighbor_query (get (item_map, *it), std::back_inserter (neighborhood));
+
+      double mean = mean_feature->value(idx);
+      double variance = 0.;
+      for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+      {
+        double v = get (property_map, *(input.begin() + neighborhood[i]));
+        variance += (v - mean) * (v - mean);
+      }
+      m_values.push_back (variance / neighborhood.size());
+
+      neighborhood.clear();
+    }
+
+  }
+  /// \cond SKIP_IN_MANUAL
+  virtual double value (std::size_t pt_index)
+  {
+    return static_cast<double> (m_values[pt_index]);
+  }
+  /// \endcond
+};
+
 } // namespace Feature
 
 } // namespace Classification
