@@ -116,6 +116,12 @@ public:
   
 #endif
 
+template <typename FeatureType>
+FeatureType* feature_cast (Feature_handle fh)
+{
+  return dynamic_cast<FeatureType*>(&*(fh));
+}
+
 
 } // namespace Classification
 
