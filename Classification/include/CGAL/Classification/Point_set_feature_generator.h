@@ -38,6 +38,7 @@
 #include <CGAL/Classification/Feature/Height_below.h>
 #include <CGAL/Classification/Feature/Height_above.h>
 #include <CGAL/Classification/Feature/Vertical_range.h>
+#include <CGAL/Classification/Feature/Simple_feature.h>
 
 // Experimental feature, not used officially
 #ifdef CGAL_CLASSIFICATION_USE_GRADIENT_OF_FEATURE
@@ -565,6 +566,146 @@ public:
     typedef Feature::Echo_scatter<GeomTraits, PointRange, PointMap, EchoMap> Echo_scatter;
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Echo_scatter> (i, m_input, echo_map, grid(i), radius_neighbors(i));
+  }
+
+  template <typename PropertyMap>
+  void generate_statistics_features_v1 (Feature_set& features, PropertyMap property_map, const std::string& name)
+  {
+    typedef Feature::Precomputed_feature Precomputed_feature;
+    
+    std::size_t first_feature_idx = features.size();
+    
+    for (std::size_t i = 0; i < m_scales.size(); ++ i)
+      features.add_with_scale_id<Precomputed_feature>(i, "mean_" + name);
+    for (std::size_t i = 0; i < m_scales.size(); ++ i)
+      features.add_with_scale_id<Precomputed_feature>(i, "variance_" + name);
+
+    for (std::size_t i = 0; i < m_scales.size() * 2; ++ i)
+      feature_cast<Precomputed_feature>(features[first_feature_idx + i])->values.reserve(m_input.size());
+
+    typedef typename Neighborhood::Sphere_neighbor_query Neighbor_query;
+
+    double neighborhood_size = radius_neighbors(m_scales.size() - 1);
+    Neighbor_query neighbor_query = neighborhood(0).sphere_neighbor_query (neighborhood_size);
+    std::vector<std::size_t> neighborhood;
+    
+    for (typename PointRange::const_iterator it = m_input.begin();
+         it != m_input.end(); ++ it)
+    {
+      const Point& query_point = get (m_point_map, *it);
+      neighbor_query (query_point, std::back_inserter (neighborhood));
+
+      std::vector<std::size_t> nb_items (m_scales.size(), 0);
+      std::vector<double> mean (m_scales.size(), 0.);
+      
+      for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+      {
+        double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
+        double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
+        for (std::size_t s = 0; s < m_scales.size(); ++ s)
+          if (dist < radius_neighbors(s) * radius_neighbors(s))
+          {
+            mean[s] += v;
+            nb_items[s] ++;
+          }
+      }
+      
+      for (std::size_t s = 0; s < m_scales.size(); ++ s)
+      {
+        mean[s] /= nb_items[s];
+        feature_cast<Precomputed_feature>(features[first_feature_idx + s])->values.push_back (mean[s]);
+      }
+
+      std::vector<double> variance (m_scales.size(), 0);
+      for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+      {
+        double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
+        double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
+        for (std::size_t s = 0; s < m_scales.size(); ++ s)
+          if (dist < radius_neighbors(s) * radius_neighbors(s))
+            variance[s] += (v - mean[s]) * (v - mean[s]);
+      }
+      
+      for (std::size_t s = 0; s < m_scales.size(); ++ s)
+      {
+        variance[s] /= nb_items[s];
+        feature_cast<Precomputed_feature>(features[first_feature_idx + m_scales.size() + s])->values.push_back (variance[s]);
+      }
+      neighborhood.clear();
+    }
+
+  }
+  
+  template <typename PropertyMap>
+  void generate_statistics_features (Feature_set& features, PropertyMap property_map, const std::string& name)
+  {
+    typedef Feature::Precomputed_feature Precomputed_feature;
+    
+    std::size_t first_feature_idx = features.size();
+    
+    for (std::size_t i = 0; i < m_scales.size(); ++ i)
+      features.add_with_scale_id<Precomputed_feature>(i, "mean_" + name);
+    for (std::size_t i = 0; i < m_scales.size(); ++ i)
+      features.add_with_scale_id<Precomputed_feature>(i, "variance_" + name);
+
+    for (std::size_t i = 0; i < m_scales.size() * 2; ++ i)
+      feature_cast<Precomputed_feature>(features[first_feature_idx + i])->values.resize(m_input.size());
+
+    typedef typename Neighborhood::Sphere_neighbor_query Neighbor_query;
+
+    double neighborhood_size = grid_resolution(m_scales.size() - 1);
+    Neighbor_query neighbor_query = neighborhood(0).sphere_neighbor_query (neighborhood_size);
+
+    tbb::parallel_for
+    (tbb::blocked_range<std::size_t>(0, m_input.size()),
+     [&] (const tbb::blocked_range<std::size_t>& r) -> void
+     {
+       std::vector<std::size_t> neighborhood;
+       for (std::size_t iter = r.begin(); iter != r.end(); ++ iter)
+       {
+         typename PointRange::const_iterator it = m_input.begin() + iter;
+         const Point& query_point = get (m_point_map, *it);
+         neighbor_query (query_point, std::back_inserter (neighborhood));
+
+         std::vector<std::size_t> nb_items (m_scales.size(), 0);
+         std::vector<double> mean (m_scales.size(), 0.);
+      
+         for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+         {
+           double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
+           double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
+           for (std::size_t s = 0; s < m_scales.size(); ++ s)
+             if (dist < grid_resolution(s) * grid_resolution(s))
+             {
+               mean[s] += v;
+               nb_items[s] ++;
+             }
+         }
+      
+         for (std::size_t s = 0; s < m_scales.size(); ++ s)
+         {
+           mean[s] /= nb_items[s];
+           feature_cast<Precomputed_feature>(features[first_feature_idx + s])->values[iter] = mean[s];
+         }
+
+         std::vector<double> variance (m_scales.size(), 0);
+         for (std::size_t i = 0; i < neighborhood.size(); ++ i)
+         {
+           double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
+           double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
+           for (std::size_t s = 0; s < m_scales.size(); ++ s)
+             if (dist < grid_resolution(s) * grid_resolution(s))
+               variance[s] += (v - mean[s]) * (v - mean[s]);
+         }
+      
+         for (std::size_t s = 0; s < m_scales.size(); ++ s)
+         {
+           variance[s] /= nb_items[s];
+           feature_cast<Precomputed_feature>(features[first_feature_idx + m_scales.size() + s])->values[iter] = variance[s];
+         }
+         neighborhood.clear();
+       }
+     });
   }
 
   /// @}
