@@ -72,6 +72,22 @@ public:
   /// \endcond
 };
 
+class Precomputed_feature : public Feature_base
+{
+public:
+  std::vector<internal_float> values;
+      
+  Precomputed_feature (const std::string& name)
+  {
+    this->set_name(name.c_str());
+  }
+  
+  double value (std::size_t pt_index)
+  {
+    return double(values[pt_index]);
+  }
+};
+
 class Mean_of_feature : public Feature_base
 {
   std::vector<internal_float> m_values;
