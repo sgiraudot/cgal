@@ -8,6 +8,13 @@ namespace Classification {
 class Joint_classification_wrapper
 {
 public:
+
+  enum Mode
+  {
+    STANDARD, // N labels -> 2*N joint labels
+    EXTENDED, // N labels -> N*N joint labels
+    EXTENDED_PLUS_VOID // N labels -> N*(N+1) joint labels
+  };
   
   typedef boost::uint32_t Index_type;
   typedef std::pair<Index_type, Index_type> Pair;
@@ -44,7 +51,7 @@ public:
     const std::vector<Index_type>& m_neighborhood_index;
     std::size_t m_nb_labels;
     const Classifier& m_classifier;
-    bool m_complete;
+    Mode m_mode;
 
   public:
 
@@ -52,12 +59,12 @@ public:
                       const std::vector<Index_type>& neighborhood_index,
                       std::size_t nb_labels,
                       const Classifier& classifier,
-                      bool complete)
+                      Mode mode)
       : m_neighborhood (neighborhood)
       , m_neighborhood_index (neighborhood_index)
       , m_nb_labels (nb_labels)
       , m_classifier (classifier)
-      , m_complete (complete)
+      , m_mode (mode)
     { }
 
     void operator() (std::size_t item_index, std::vector<double>& out) const
@@ -71,19 +78,29 @@ public:
       {
         std::vector<double> local_out;
         m_classifier(i, local_out);
-        if (m_complete)
+        if (m_mode == STANDARD)
+        {
+          for (std::size_t j = 0; j < out.size(); ++ j)
+            out[j] += local_out[j] + local_out[j + m_nb_labels];
+        }
+        else if (m_mode == EXTENDED)
+        {
           for (std::size_t j = 0; j < out.size(); ++ j)
             for (std::size_t k = 0; k < m_nb_labels; ++ k)
               out[j] += local_out[j * m_nb_labels + k];
-        else
+        }
+        else // m_mode == EXTENDED_PLUS_VOID
+        {
           for (std::size_t j = 0; j < out.size(); ++ j)
-            out[j] += local_out[j] + local_out[j + m_nb_labels];
+            for (std::size_t k = 0; k < (m_nb_labels+1); ++ k)
+              out[j] += local_out[j * (m_nb_labels+1) + k];
+        }
       }
       for (std::size_t i = 0; i < out.size(); ++ i)
         out[i] /= (last - first);
     }
 
-    bool complete() const { return m_complete; }
+    const Mode& mode() const { return m_mode; }
 
     std::size_t first (std::size_t item_index) const
     {
@@ -111,7 +128,7 @@ private:
   Feature_set m_features;
   std::vector<int> m_ground_truth;
 
-  bool m_complete;
+  Mode m_mode;
   
 public:
 
@@ -119,9 +136,9 @@ public:
   Joint_classification_wrapper (const ItemRange& input,
                                 const ItemMap item_map,
                                 const NeighborQuery& neighbor_query,
-                                bool complete = false,
+                                Mode mode = STANDARD,
                                 std::size_t allocation_hint = 0)
-    : m_complete (complete)
+    : m_mode (mode)
   {
     std::vector<std::size_t> neighbors;
     Index_type idx = 0;
@@ -145,14 +162,7 @@ public:
   {
     m_labels.clear();
 
-    if (m_complete)
-      for (std::size_t i = 0; i < l.size(); ++ i)
-        for (std::size_t j = 0; j < l.size(); ++ j)
-        {
-          std::string lname = l[i]->name() + "_next_to_" + l[j]->name();
-          m_labels.add (lname.c_str());
-        }
-    else
+    if (m_mode == STANDARD)
     {
       for (std::size_t i = 0; i < l.size(); ++ i)
       {
@@ -165,9 +175,35 @@ public:
         m_labels.add (lname.c_str());
       }
     }
+    else if (m_mode == EXTENDED)
+    {
+      for (std::size_t i = 0; i < l.size(); ++ i)
+      {
+        for (std::size_t j = 0; j < l.size(); ++ j)
+        {
+          std::string lname = l[i]->name() + "_next_to_" + l[j]->name();
+          m_labels.add (lname.c_str());
+        }
+      }
+    }
+    else // m_mode = EXTENDED_PLUS_VOID
+    {
+      for (std::size_t i = 0; i < l.size(); ++ i)
+      {
+        for (std::size_t j = 0; j < l.size(); ++ j)
+        {
+          std::string lname = l[i]->name() + "_next_to_" + l[j]->name();
+          m_labels.add (lname.c_str());
+        }
+        std::string lname = l[i]->name() + "_border";
+        m_labels.add (lname.c_str());
+      }
+    }
 
     return m_labels;
   }
+
+  const std::vector<Pair>& items() const { return m_neighborhood; }
 
   const Feature_set& features (const Feature_set& f)
   {
@@ -179,12 +215,48 @@ public:
     return m_features;
   }
 
+  inline int joint_label (const int& label_self, const int& label_other, const std::size_t& nb_labels) const
+  {
+    if (m_mode == STANDARD)
+    {
+      if (label_self == -1)
+        return -1;
+      if (label_self == label_other)
+        return label_self;
+      // else
+      return label_self + nb_labels;
+    }
+    else if (m_mode == EXTENDED)
+    {
+      if (label_self == -1 || label_other == -1)
+        return -1;
+      // else
+      return label_self * nb_labels + label_other;
+    }
+    // else if (m_mode == EXTENDED_PLUS_VOID)
+    
+    if (label_self == -1)
+      return -1;
+    if (label_other == -1)
+      return label_self * (nb_labels + 1) + nb_labels;
+    // else
+    return label_self * (nb_labels + 1) + label_other;
+  }
+
+  std::size_t number_of_labels() const
+  {
+    if (m_mode == STANDARD)
+      return m_labels.size() / 2;
+    if (m_mode == EXTENDED)
+      return std::sqrt (m_labels.size());
+    // if (m_mode == EXTENDED_PLUS_VOID)
+    return (std::sqrt(4 * m_labels.size() + 1) - 1) / 2;
+  }
+
   template <typename LabelIndexRange>
   const std::vector<int>& ground_truth (const LabelIndexRange& gt)
   {
-    std::size_t label_size = m_labels.size() / 2;
-    if (m_complete)
-      label_size = std::sqrt (m_labels.size());
+    std::size_t label_size = number_of_labels();
     
     m_ground_truth.clear();
     m_ground_truth.reserve(m_neighborhood.size());
@@ -192,24 +264,8 @@ public:
     {
       std::size_t first = m_neighborhood_index[i];
       std::size_t last = m_neighborhood_index[i+1];
-      if (m_complete)
-      {
-        for (std::size_t j = first; j < last; ++ j)
-          if (int(gt[i]) == -1 || gt[m_neighborhood[j].second] == -1)
-            m_ground_truth.push_back (-1);
-          else 
-            m_ground_truth.push_back(gt[i] * label_size + gt[m_neighborhood[j].second]);
-      }
-      else
-      {
-        for (std::size_t j = first; j < last; ++ j)
-          if (int(gt[i]) == -1)
-            m_ground_truth.push_back (-1);
-          else if (gt[i] == gt[m_neighborhood[j].second])
-            m_ground_truth.push_back(gt[i]);
-          else
-            m_ground_truth.push_back(gt[i] + label_size);
-      }
+      for (std::size_t j = first; j < last; ++ j)
+        m_ground_truth.push_back (joint_label (gt[i], gt[m_neighborhood[j].second], label_size));
     }
     return m_ground_truth;
   }
@@ -217,10 +273,9 @@ public:
   template <typename Classifier>
   Joint_classifier<Classifier> classifier (const Classifier& classifier)
   {
-    if (m_complete)
-      return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index, std::sqrt(m_labels.size()), classifier, m_complete);
-
-    return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index, m_labels.size() / 2, classifier, m_complete);
+    return Joint_classifier<Classifier> (m_neighborhood, m_neighborhood_index,
+                                         number_of_labels(), classifier,
+                                         m_mode);
   }
 
   unspecified_type graphcut_neighbor_query() const
@@ -308,13 +363,23 @@ namespace internal {
           
           m_classifier.base()(i, values_local);
           
-          if (m_classifier.complete())
+          if (m_classifier.mode() == Joint_classification_wrapper::STANDARD)
+          {
+            for (std::size_t k = 0; k < values.size(); ++ k)
+              values[k] += values_local[k] + values_local[k + values.size()];
+          }
+          else if (m_classifier.mode() == Joint_classification_wrapper::EXTENDED)
+          {
             for (std::size_t k = 0; k < values.size(); ++ k)
               for (std::size_t l = 0; l < m_labels.size(); ++ l)
                 values[k] += values_local[k * m_labels.size() + l];
-          else
+          }
+          else // m_classifier.mode() == Joint_classification_wrapper::EXTENDED_PLUS_VOID
+          {
             for (std::size_t k = 0; k < values.size(); ++ k)
-              values[k] += values_local[k] + values_local[k + values.size()];
+              for (std::size_t l = 0; l < m_labels.size(); ++ l)
+                values[k] += values_local[k * (m_labels.size()+1) + l];
+          }
           
           if (sub == m_input_to_indices[neighbor_s].first
               && j != m_input_to_indices[neighbor_s].second)
@@ -322,12 +387,21 @@ namespace internal {
             edges.push_back (std::make_pair (j, m_input_to_indices[neighbor_s].second));
 
             double weight = 0.;
-            if (m_classifier.complete())
-              for (std::size_t k = 0; k < m_labels.size(); ++ k)
-                weight += values_local[k * m_labels.size() + k];
-            else
+            if (m_classifier.mode() == Joint_classification_wrapper::STANDARD)
+            {
               for (std::size_t k = 0; k < m_labels.size(); ++ k)
                 weight += values_local[k];
+            }
+            else if (m_classifier.mode() == Joint_classification_wrapper::EXTENDED)
+            {
+              for (std::size_t k = 0; k < m_labels.size(); ++ k)
+                weight += values_local[k * m_labels.size() + k];
+            }
+            else // m_classifier.mode() == Joint_classification_wrapper::EXTENDED_PLUS_VOID
+            {
+              for (std::size_t k = 0; k < m_labels.size(); ++ k)
+                weight += values_local[k * (m_labels.size()+1) + k];
+            }
 
             edge_weights.push_back (weight * m_strength);
           }
