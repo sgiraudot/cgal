@@ -183,7 +183,7 @@ public:
              const NeighborQuery& query)
     : input(input), point_map(point_map), grid(NULL)
   {
-    this->set_name ("elevation_2");
+    this->set_name ("elevation_exact");
 
     z_max = internal_float(0);
     z_min = std::numeric_limits<internal_float>::max();

@@ -317,7 +317,13 @@ Cluster_classification::~Cluster_classification()
     }
   
     // For LAS saving, convert classification info in the LAS standard
-//    if (m_input_is_las)
+    QString filename = m_points->property("source filename").toString();
+
+    if (m_input_is_las ||
+        (!filename.isEmpty() && (filename.endsWith(QString(".las")) ||
+                                 filename.endsWith(QString(".LAS")) ||
+                                 filename.endsWith(QString(".laz")) ||
+                                 filename.endsWith(QString(".LAZ")))))
     {
       Point_set::Property_map<unsigned char> las_classif
         = m_points->point_set()->add_property_map<unsigned char>("classification", 0).first;

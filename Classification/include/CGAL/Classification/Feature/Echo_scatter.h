@@ -65,7 +65,7 @@ public:
 private:  
   typedef Classification::Image<compressed_float> Image_cfloat;
 
-  const Grid& grid;
+  const Grid* grid;
   Image_cfloat Scatter;
   std::vector<compressed_float> echo_scatter;
   
@@ -82,7 +82,7 @@ public:
                 EchoMap echo_map,
                 const Grid& grid,
                 double radius_neighbors = -1.)
-    : grid (grid)
+    : grid (&grid)
   {
     this->set_name ("echo_scatter");
     if (radius_neighbors < 0.)
@@ -148,13 +148,47 @@ public:
         }
   }
 
+  template <typename NeighborQuery>
+  Echo_scatter (const PointRange& input,
+                PointMap point_map,
+                EchoMap echo_map,
+                const NeighborQuery& query)
+    : grid(NULL)
+  {
+    this->set_name ("echo_scatter_exact");
+    
+    echo_scatter.reserve(input.size());
+    
+    std::vector<std::size_t> neighborhood;
+    for (typename PointRange::const_iterator it = input.begin();
+         it != input.end(); ++ it)
+    {
+      query (get (point_map, *it), std::back_inserter (neighborhood));
+
+      double z = get (point_map, *(input.begin() + neighborhood[neighborhood.size() / 10])).z();
+
+      std::size_t NB_echo_sup = 0;
+      std::size_t NB_echo_total = 0;
+
+      for (std::size_t n : neighborhood)
+      {
+        ++ NB_echo_total;
+        if(get(echo_map, *(input.begin()+n)) > 1)
+            NB_echo_sup++;
+      }
+      echo_scatter.push_back(compress_float (NB_echo_sup/double(NB_echo_total)));
+      neighborhood.clear();
+    }
+    
+  }
+
   /// \cond SKIP_IN_MANUAL
   virtual double value (std::size_t pt_index)
   {
     if (echo_scatter.empty())
     {
-      std::size_t I = grid.x(pt_index);
-      std::size_t J = grid.y(pt_index);
+      std::size_t I = grid->x(pt_index);
+      std::size_t J = grid->y(pt_index);
       return double(decompress_float (Scatter(I,J)));
     }
     return double(decompress_float (echo_scatter[pt_index]));

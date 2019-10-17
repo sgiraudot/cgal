@@ -38,6 +38,7 @@
 #include <CGAL/Classification/Feature/Height_below.h>
 #include <CGAL/Classification/Feature/Height_above.h>
 #include <CGAL/Classification/Feature/Vertical_range.h>
+#include <CGAL/Classification/Feature/Density.h>
 #include <CGAL/Classification/Feature/Simple_feature.h>
 
 // Experimental feature, not used officially
@@ -61,7 +62,7 @@
 #include <CGAL/demangle.h>
 
 // #define CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
-
+//#define CGAL_CLASSIFICATION_TRY_DENSITY
 
 namespace CGAL {
 
@@ -149,6 +150,8 @@ public:
   <GeomTraits, PointRange, PointMap>                    Height_above;
   typedef Classification::Feature::Vertical_range
   <GeomTraits, PointRange, PointMap>                    Vertical_range;
+  typedef Classification::Feature::Density
+  <GeomTraits, PointRange, PointMap>                    Density;
   typedef Classification::Feature::Vertical_dispersion
   <GeomTraits, PointRange, PointMap>                    Dispersion;
   typedef Classification::Feature::Verticality
@@ -490,12 +493,21 @@ public:
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Distance_to_plane> (i, m_input, m_point_map, eigen(i));
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
+    {
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+      features.add_with_scale_id<Dispersion> (i, m_input, m_point_map,
+                                              m_scales[i]->neighborhood_2->sphere_neighbor_query(radius_neighbors(i)),
+                                              grid_resolution(i));
+#else
       features.add_with_scale_id<Dispersion> (i, m_input, m_point_map, grid(i), radius_neighbors(i));
+#endif
+    }
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
     {
-      features.add_with_scale_id<Elevation> (i, m_input, m_point_map, grid(i), radius_dtm(i));
 #ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
       features.add_with_scale_id<Elevation> (i, m_input, m_point_map, m_scales[i]->neighborhood_2->sphere_neighbor_query(radius_dtm(i)));
+#else
+      features.add_with_scale_id<Elevation> (i, m_input, m_point_map, grid(i), radius_dtm(i));
 #endif
     }
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
@@ -504,6 +516,10 @@ public:
       features.add_with_scale_id<Height_above> (i, m_input, m_point_map, grid(i));
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Vertical_range> (i, m_input, m_point_map, grid(i));
+#ifdef CGAL_CLASSIFICATION_TRY_DENSITY
+    for (std::size_t i = 0; i < m_scales.size(); ++ i)
+      features.add_with_scale_id<Density> (i, m_input, m_point_map, grid(i));
+#endif
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
       features.add_with_scale_id<Verticality> (i, m_input, eigen(i));
   }
@@ -565,7 +581,13 @@ public:
   {
     typedef Feature::Echo_scatter<GeomTraits, PointRange, PointMap, EchoMap> Echo_scatter;
     for (std::size_t i = 0; i < m_scales.size(); ++ i)
+    {
+#ifdef CGAL_CLASSIFICATION_TEST_EXACT_CYLINDRICAL
+      features.add_with_scale_id<Echo_scatter> (i, m_input, m_point_map, m_scales[i]->neighborhood_2->sphere_neighbor_query(radius_neighbor(i)));
+#else
       features.add_with_scale_id<Echo_scatter> (i, m_input, echo_map, grid(i), radius_neighbors(i));
+#endif
+    }
   }
 
   template <typename PropertyMap>
@@ -653,7 +675,7 @@ public:
 
     typedef typename Neighborhood::Sphere_neighbor_query Neighbor_query;
 
-    double neighborhood_size = grid_resolution(m_scales.size() - 1);
+    double neighborhood_size = radius_neighbors(m_scales.size() - 1);
     Neighbor_query neighbor_query = neighborhood(0).sphere_neighbor_query (neighborhood_size);
 
     tbb::parallel_for
@@ -675,7 +697,7 @@ public:
            double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
            double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
            for (std::size_t s = 0; s < m_scales.size(); ++ s)
-             if (dist < grid_resolution(s) * grid_resolution(s))
+             if (dist < radius_neighbors(s) * radius_neighbors(s))
              {
                mean[s] += v;
                nb_items[s] ++;
@@ -694,7 +716,7 @@ public:
            double dist = CGAL::squared_distance (query_point, get (m_point_map, *(m_input.begin() + neighborhood[i])));
            double v = double(get (property_map, *(m_input.begin() + neighborhood[i])));
            for (std::size_t s = 0; s < m_scales.size(); ++ s)
-             if (dist < grid_resolution(s) * grid_resolution(s))
+             if (dist < radius_neighbors(s) * radius_neighbors(s))
                variance[s] += (v - mean[s]) * (v - mean[s]);
          }
       

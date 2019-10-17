@@ -33,6 +33,7 @@
 #include <CGAL/Classification/Feature_base.h>
 #include <CGAL/int.h>
 #include <boost/tuple/tuple.hpp>
+#include <boost/function_output_iterator.hpp>
 
 namespace CGAL {
 
@@ -67,7 +68,7 @@ class Vertical_dispersion : public Feature_base
   typedef Classification::Image<compressed_float> Image_cfloat;
   typedef Classification::Planimetric_grid<GeomTraits, PointRange, PointMap> Grid;
 
-  const Grid& grid;
+  const Grid* grid;
   Image_cfloat Dispersion;
   std::vector<compressed_float> values;
   
@@ -84,7 +85,7 @@ public:
                        PointMap point_map,
                        const Grid& grid,
                        double radius_neighbors = -1.)
-    : grid (grid)
+    : grid (&grid)
   {
     this->set_name ("vertical_dispersion");
     if (radius_neighbors < 0.)
@@ -164,13 +165,59 @@ public:
 		
     }
   }
-  /// \cond SKIP_IN_MANUAL
+
+  template <typename NeighborQuery>
+  Vertical_dispersion (const PointRange& input,
+                       PointMap point_map,
+                       const Grid& grid,
+                       const NeighborQuery& neighbor_query,
+                       double resolution)
+    : grid (NULL)
+  {
+    this->set_name ("vertical_dispersion_exact");
+    values.reserve(input.size());
+
+    std::vector<internal_float> hori;
+    for (typename PointRange::const_iterator it = input.begin();
+         it != input.end(); ++ it)
+    {
+      neighbor_query (get (point_map, *it),
+                      boost::make_function_output_iterator
+                      ([&](const std::size_t& idx) -> void
+                       {
+                         hori.push_back (internal_float(get(point_map, *(input.begin()+idx)).z()));
+                       }));
+              
+      std::vector<internal_float>::iterator min_it, max_it;
+      boost::tie(min_it, max_it)
+        = boost::minmax_element (hori.begin(), hori.end());
+
+      std::vector<bool> occupy (1 + (std::size_t)((*max_it - *min_it) / resolution), false);
+      
+      for (std::size_t k = 0; k < hori.size(); ++ k)
+      {
+        std::size_t index = (std::size_t)((hori[k] - *min_it) / grid.resolution());
+        occupy[index] = true;
+      }
+
+      std::size_t nb_occ = 0;
+      for (std::size_t k = 0; k < occupy.size(); ++ k)
+        if (occupy[k])
+          ++ nb_occ;
+
+      compressed_float v = compress_float (1.f - (nb_occ / (internal_float)(occupy.size())));
+      values.push_back(v);
+      hori.clear();
+    }
+  }
+
+/// \cond SKIP_IN_MANUAL
   virtual double value (std::size_t pt_index)
   {
     if (values.empty())
     {
-      std::size_t I = grid.x(pt_index);
-      std::size_t J = grid.y(pt_index);
+      std::size_t I = grid->x(pt_index);
+      std::size_t J = grid->y(pt_index);
       return double(decompress_float (Dispersion(I,J)));
     }
     return double(decompress_float (values[pt_index]));
