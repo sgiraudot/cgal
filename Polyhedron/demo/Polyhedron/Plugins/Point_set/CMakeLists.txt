@@ -53,6 +53,10 @@ else(EIGEN3_FOUND)
 
 endif()
 
+  qt5_wrap_ui(digital_elevation_modelUI_FILES Digital_elevation_model_plugin.ui)
+  polyhedron_demo_plugin(digital_elevation_model_plugin Digital_elevation_model_plugin ${digital_elevation_modelUI_FILES} KEYWORDS PointSetProcessing)
+  target_link_libraries(digital_elevation_model_plugin PUBLIC scene_points_with_normal_item scene_surface_mesh_item)
+  
   qt5_wrap_ui(point_set_bilateral_smoothingUI_FILES Point_set_bilateral_smoothing_plugin.ui)
   polyhedron_demo_plugin(point_set_bilateral_smoothing_plugin Point_set_bilateral_smoothing_plugin ${point_set_bilateral_smoothingUI_FILES} KEYWORDS PointSetProcessing)
   target_link_libraries(point_set_bilateral_smoothing_plugin PUBLIC scene_points_with_normal_item scene_callback_signaler)
