@@ -33,6 +33,7 @@
 #include <CGAL/Arr_tags.h>
 #include <CGAL/Arr_enums.h>
 #include <CGAL/Arr_geometry_traits/Segment_assertions.h>
+#include <CGAL/Arrangement_2/Do_intersect_inexact_kernel_exception.h>
 
 namespace CGAL {
 
@@ -724,16 +725,22 @@ public:
       // Check if we have a single intersection point.
       const Point_2* ip = boost::get<Point_2>(&*res);
       if (ip != nullptr) {
-        CGAL_assertion(cv1.is_vertical() ?
-                       m_traits.is_in_y_range_2_object()(cv1, *ip) :
-                       m_traits.is_in_x_range_2_object()(cv1, *ip));
-        CGAL_assertion(cv2.is_vertical() ?
-                       m_traits.is_in_y_range_2_object()(cv2, *ip) :
-                       m_traits.is_in_x_range_2_object()(cv2, *ip));
+
         Intersection_point ip_mult(*ip, 1);
+        throw_exception_if_new_point_in_inexact_kernel<FT>
+          (ip_mult, cv1.left(), cv1.right(), cv2.right(), cv2.left());
+
+        CGAL_assertion(cv1.is_vertical() ?
+                       m_traits.is_in_y_range_2_object()(cv1, ip_mult.first) :
+                       m_traits.is_in_x_range_2_object()(cv1, ip_mult.first));
+        CGAL_assertion(cv2.is_vertical() ?
+                       m_traits.is_in_y_range_2_object()(cv2, ip_mult.first) :
+                       m_traits.is_in_x_range_2_object()(cv2, ip_mult.first));
+
         *oi++ = Intersection_result(ip_mult);
         return oi;
       }
+
 
       // In this case, the two supporting lines overlap.
       // The overlapping segment is therefore [p_l,p_r], where p_l is the

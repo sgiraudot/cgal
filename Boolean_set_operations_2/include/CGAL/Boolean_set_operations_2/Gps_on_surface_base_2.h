@@ -25,6 +25,7 @@
 #include <CGAL/iterator.h>
 #include <CGAL/Arrangement_on_surface_2.h>
 #include <CGAL/Arrangement_2/Arr_traits_adaptor_2.h>
+#include <CGAL/Arrangement_2/Do_intersect_inexact_kernel_exception.h>
 
 #include <CGAL/Arr_overlay_2.h>
 #include <CGAL/Boolean_set_operations_2/Gps_do_intersect_functor.h>
@@ -317,7 +318,14 @@ public:
     if (this->is_plane() || other.is_plane()) return true;
     Aos_2 res_arr;
     Gps_do_intersect_functor<Aos_2>  func;
-    overlay(*m_arr, *(other.m_arr), res_arr, func);
+    try
+    {
+      overlay(*m_arr, *(other.m_arr), res_arr, func);
+    }
+    catch (Do_intersect_inexact_kernel_exception&)
+    {
+      return true;
+    }
     return func.found_reg_intersection();
   }
 
