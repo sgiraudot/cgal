@@ -318,6 +318,10 @@ public:
     if (this->is_plane() || other.is_plane()) return true;
     Aos_2 res_arr;
     Gps_do_intersect_functor<Aos_2>  func;
+
+    // To make `do_intersect` work with inexact constructions, we use
+    // an early termination mechanism using a special exception
+    // triggered when a new point is constructed.
     try
     {
       overlay(*m_arr, *(other.m_arr), res_arr, func);
