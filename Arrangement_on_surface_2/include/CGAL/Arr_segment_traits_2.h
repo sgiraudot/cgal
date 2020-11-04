@@ -718,6 +718,17 @@ public:
 
       // An intersection is guaranteed.
 
+      // If inexact kernel, check first if the intersection is just a
+      // segment-segment connection by one shared vertex, otherwise
+      // raise an exception to avoid inexact construction
+      Intersection_point ip_mult;
+      if (!throw_exception_if_new_point_in_inexact_kernel<FT>
+          (ip_mult, cv1.left(), cv1.right(), cv2.right(), cv2.left()))
+      {
+        *oi ++ = Intersection_result(ip_mult);
+        return oi;
+      }
+
       // Intersect the two supporting lines.
       auto res = kernel.intersect_2_object()(cv1.line(), cv2.line());
       CGAL_assertion(bool(res));
@@ -725,22 +736,16 @@ public:
       // Check if we have a single intersection point.
       const Point_2* ip = boost::get<Point_2>(&*res);
       if (ip != nullptr) {
-
-        Intersection_point ip_mult(*ip, 1);
-        throw_exception_if_new_point_in_inexact_kernel<FT>
-          (ip_mult, cv1.left(), cv1.right(), cv2.right(), cv2.left());
-
         CGAL_assertion(cv1.is_vertical() ?
-                       m_traits.is_in_y_range_2_object()(cv1, ip_mult.first) :
-                       m_traits.is_in_x_range_2_object()(cv1, ip_mult.first));
+                       m_traits.is_in_y_range_2_object()(cv1, *ip) :
+                       m_traits.is_in_x_range_2_object()(cv1, *ip));
         CGAL_assertion(cv2.is_vertical() ?
-                       m_traits.is_in_y_range_2_object()(cv2, ip_mult.first) :
-                       m_traits.is_in_x_range_2_object()(cv2, ip_mult.first));
-
+                       m_traits.is_in_y_range_2_object()(cv2, *ip) :
+                       m_traits.is_in_x_range_2_object()(cv2, *ip));
+        Intersection_point ip_mult(*ip, 1);
         *oi++ = Intersection_result(ip_mult);
         return oi;
       }
-
 
       // In this case, the two supporting lines overlap.
       // The overlapping segment is therefore [p_l,p_r], where p_l is the
