@@ -453,7 +453,11 @@ template <class Traits_, class TopTraits_, class ValidationPolicy>
   insert(PolygonIter p_begin, PolygonIter p_end,
          PolygonWithHolesIter pwh_begin, PolygonWithHolesIter pwh_end)
 {
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+  typedef std::vector<X_monotone_curve_2>                  XCurveList;
+#else
   typedef std::list<X_monotone_curve_2>                  XCurveList;
+#endif
   typedef Init_faces_visitor<Arrangement_on_surface_2>              My_visitor;
   typedef Gps_bfs_scanner<Arrangement_on_surface_2, My_visitor>     Arr_bfs_scanner;
 
@@ -508,7 +512,11 @@ template <class Traits_, class TopTraits_, class ValidationPolicy>
   void Gps_on_surface_base_2<Traits_, TopTraits_, ValidationPolicy>::
   _insert(PolygonIter p_begin, PolygonIter p_end, Polygon_with_holes_2 & /*pgn*/)
 {
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+  typedef std::vector<X_monotone_curve_2>                  XCurveList;
+#else
   typedef std::list<X_monotone_curve_2>                  XCurveList;
+#endif
   typedef Init_faces_visitor<Arrangement_on_surface_2>              My_visitor;
   typedef Gps_bfs_scanner<Arrangement_on_surface_2, My_visitor>     Arr_bfs_scanner;
 
@@ -548,7 +556,11 @@ template <class Traits_, class TopTraits_, class ValidationPolicy>
  // inner function not exposed to user - no validation
  // ValidationPolicy::is_valid(pgn, *m_traits);
 
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+  typedef std::vector<X_monotone_curve_2>                  XCurveList;
+#else
   typedef std::list<X_monotone_curve_2>                  XCurveList;
+#endif
   typedef Init_faces_visitor<Arrangement_on_surface_2>          My_visitor;
   typedef Gps_bfs_scanner<Arrangement_on_surface_2, My_visitor> Arr_bfs_scanner;
 
