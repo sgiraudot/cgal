@@ -20,6 +20,8 @@
 #include <CGAL/number_utils_classes.h>
 #include <CGAL/Compact_container.h>
 #include <iterator>
+#include <fstream>
+#include <queue>
 
 namespace CGAL {
 
@@ -253,6 +255,9 @@ protected:
 
   public:
 
+    Default_node_allocator (const Base& base = Base())
+      : base(base) { }
+
     Node* allocate (const Node& n)
     {
       Node* new_node = base.allocate(1);
@@ -274,6 +279,8 @@ protected:
 
   public:
 
+    void reserve (std::size_t n) { base.reserve(n); }
+
     Node* allocate (const Node& n)
     {
       Node* new_node = &*base.emplace(n);
@@ -291,6 +298,8 @@ protected:
                                     Default_node_allocator>::type Node_allocator;
 
 public:
+
+  typedef Node Node_public;
 
   // Forward decleration:
   class const_iterator;
@@ -555,6 +564,8 @@ public:
    */
   Multiset (const Compare& comp);
 
+  Multiset (const Compare& comp, const Allocator& allocator);
+
   /*!
    * Copy constructor. [takes O(n) operations]
    * \param tree The copied tree.
@@ -592,6 +603,142 @@ public:
    */
   virtual ~Multiset ();
 
+  /// \cond SKIP_IN_MANUAL
+  // To document?
+  template <typename Range>
+  void build_from_sorted_range (const Range& range)
+  {
+    typedef std::tuple<Node*, // parent
+                       bool, // is left child
+                       std::size_t, // first index
+                       std::size_t, // last index + 1
+                       std::size_t> // depth
+      Queue_item;
+
+    // Add 2 virtual nodes
+    std::size_t size = range.size() + 2;
+    std::size_t mid = (range.size() / 2) + 1;
+
+    std::size_t s = size;
+    std::size_t tree_max_depth = 0;
+    while (s >>= 1)
+      ++ tree_max_depth;
+    if ((size & (size - 1)) != 0) // if size is not power of two, add a level
+      ++ tree_max_depth;
+
+#ifdef CGAL_MULTISET_USE_COMPACT_CONTAINER_AS_DEFAULT
+    node_alloc.reserve (size);
+#endif
+
+    rootP = _allocate_node (range[mid-1], Node::BLACK);
+    iSize = 1;
+
+    std::queue<Queue_item> todo;
+    todo.push (std::make_tuple (rootP, true, 0, mid, 2));
+    todo.push (std::make_tuple (rootP, false, mid+1, size, 2));
+
+    while (!todo.empty())
+    {
+      Queue_item q = todo.front();
+      todo.pop();
+
+      Node* parent = std::get<0>(q);
+      bool is_left_node = std::get<1>(q);
+      std::size_t first = std::get<2>(q);
+      std::size_t last = std::get<3>(q);
+      std::size_t depth = std::get<4>(q);
+
+      std::size_t mid = (first + last) / 2;
+      if ((first - last) % 2 == 0 && !is_left_node) // equilibrate left/right
+        -- mid;
+
+      if (mid == 0) // beginNode reached
+      {
+        beginNode.parentP = parent;
+        parent->leftP = &beginNode;
+      }
+      else if (mid == size-1) // endNode reached
+      {
+        endNode.parentP = parent;
+        parent->rightP = &endNode;
+      }
+      else // Normal node
+      {
+        Node* n = _allocate_node (range[mid-1], Node::DUMMY_BEGIN);
+        n->color = Node::BLACK;
+
+        ++ iSize;
+
+        if (is_left_node)
+        {
+          parent->leftP = n;
+          CGAL_assertion (comp_f (parent->object, n->object) == LARGER);
+        }
+        else
+        {
+          parent->rightP = n;
+          CGAL_assertion (comp_f (n->object, parent->object) == LARGER);
+        }
+        n->parentP = parent;
+
+        if (first < mid)
+          todo.push (std::make_tuple (n, true, first, mid, depth + 1));
+        else // leaf
+        {
+          if (depth == tree_max_depth)
+            n->color = Node::RED;
+        }
+
+        if (mid + 1 < last)
+          todo.push (std::make_tuple (n, false, mid + 1, last, depth + 1));
+        else // leaf
+        {
+          if (depth == tree_max_depth)
+            n->color = Node::RED;
+        }
+      }
+    }
+
+    iBlackHeight = tree_max_depth - 1;
+  }
+
+  void dump_graph(std::ofstream& f)
+  {
+    dump_graph (f, rootP);
+  }
+  void dump_graph(std::ofstream& f, Node* n)
+  {
+    if (!_is_valid(n))
+      return;
+
+    if (n == rootP)
+      f << "digraph G {" << std::endl;
+
+    f << graph_id(n, n) << " -> " << graph_id(n->leftP, n) << std::endl;
+    f << graph_id(n, n) << " -> " << graph_id(n->rightP, n) << std::endl;
+
+    dump_graph (f, n->leftP);
+    dump_graph (f, n->rightP);
+
+    if (n == rootP)
+      f << "}" << std::endl;
+  }
+
+  std::string graph_id (Node* n, Node* parent)
+  {
+    static int nullptr_id = 0;
+
+    std::string id = (_is_red(n) ? "RED" : "BLACK");
+    if (_is_valid(n))
+      id += std::to_string(reinterpret_cast<std::size_t>(n));
+    else if (n == nullptr)
+      id += "nullptr" + std::to_string(nullptr_id ++);
+    else if (n == &beginNode)
+      id += "begin";
+    else if (n == &endNode)
+      id += "end";
+    return id;
+  }
   /*!
    * Assignment operator. [takes O(n) operations]
    * \param tree The copied tree.
@@ -1523,6 +1670,20 @@ Multiset<Type, Compare, Allocator, UseCompactContainer>::Multiset (const Compare
   iSize (0),
   iBlackHeight (0),
   comp_f (comp)
+{
+  // Mark the two fictitious nodes as dummies.
+  beginNode.color = Node::DUMMY_BEGIN;
+  endNode.color = Node::DUMMY_END;
+}
+
+template <class Type, class Compare, typename Allocator, typename UseCompactContainer>
+Multiset<Type, Compare, Allocator, UseCompactContainer>::Multiset (const Compare& comp,
+                                                                   const Allocator& allocator) :
+  rootP (nullptr),
+  iSize (0),
+  iBlackHeight (0),
+  comp_f (comp),
+  node_alloc (allocator)
 {
   // Mark the two fictitious nodes as dummies.
   beginNode.color = Node::DUMMY_BEGIN;

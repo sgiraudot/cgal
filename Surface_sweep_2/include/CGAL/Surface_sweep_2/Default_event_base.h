@@ -73,6 +73,10 @@ public:
   /*! Default constructor. */
   Default_event_base() {}
 
+  /*! Default constructor. */
+  Default_event_base(cpp17::pmr::monotonic_buffer_resource* resource)
+    : Base (resource) {}
+
   /*! Add a subcurve to the container of left curves. */
   void add_curve_to_left(Subcurve* curve)
   {

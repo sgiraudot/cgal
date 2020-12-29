@@ -96,7 +96,8 @@ public:
 
   typedef typename Event::Attribute                     Attribute;
 
-  typedef std::list<Subcurve*>                          Subcurve_container;
+  typedef typename Event::Subcurve_container            Subcurve_container;
+//  typedef std::list<Subcurve*>                          Subcurve_container;
   typedef typename Subcurve_container::iterator         Subcurve_iterator;
 
   typedef typename Base::Status_line_iterator           Status_line_iterator;

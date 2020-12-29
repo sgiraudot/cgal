@@ -22,6 +22,7 @@
  * Defintion of the No_overlap_event_base class.
  */
 
+#include <CGAL/pmr.h>
 #include <list>
 
 namespace CGAL {
@@ -119,7 +120,16 @@ public:
   typedef typename internal::Arr_complete_right_side_category<Gt2>::Category
                                                         Right_side_category;
 
+#if defined(CGAL_SS_USE_ALLOCATION_BUFFER) && defined(CGAL_SS_USE_VECTORS)
+  typedef cpp17::pmr::vector<Subcurve*>                 Subcurve_container;
+#elif defined(CGAL_SS_USE_ALLOCATION_BUFFER)
+  typedef cpp17::pmr::list<Subcurve*>                   Subcurve_container;
+#elif defined(CGAL_SS_USE_VECTORS)
+  typedef std::vector<Subcurve*>                        Subcurve_container;
+#else
   typedef std::list<Subcurve*>                          Subcurve_container;
+#endif
+
   typedef typename Subcurve_container::iterator         Subcurve_iterator;
   typedef typename Subcurve_container::const_iterator   Subcurve_const_iterator;
   typedef typename Subcurve_container::reverse_iterator
@@ -166,6 +176,15 @@ protected:
 public:
   /*! Default constructor. */
   No_overlap_event_base() :
+    m_type(0),
+    m_ps_x(static_cast<char>(ARR_INTERIOR)),
+    m_ps_y(static_cast<char>(ARR_INTERIOR)),
+    m_closed(1)
+  {}
+
+  No_overlap_event_base(cpp17::pmr::monotonic_buffer_resource* resource) :
+    m_left_curves (resource),
+    m_right_curves (resource),
     m_type(0),
     m_ps_x(static_cast<char>(ARR_INTERIOR)),
     m_ps_y(static_cast<char>(ARR_INTERIOR)),

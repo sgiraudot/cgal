@@ -77,9 +77,25 @@ class Arr_construction_event :
                               SurfaceSweepBaseCurve>,
     Arrangement_, SurfaceSweepBaseEvent>
 {
+  typedef Arr_construction_event_base<
+    GeometryTraits_2,
+    Arr_construction_subcurve<GeometryTraits_2,
+                              Arr_construction_event<GeometryTraits_2,
+                                                     Arrangement_,
+                                                     Allocator_,
+                                                     SurfaceSweepBaseEvent,
+                                                     SurfaceSweepBaseCurve>,
+                              Allocator_,
+                              SurfaceSweepBaseCurve>,
+    Arrangement_, SurfaceSweepBaseEvent>
+  Base;
+
 public:
   /*! Construct default. */
   Arr_construction_event() {}
+
+  Arr_construction_event(cpp17::pmr::monotonic_buffer_resource* resource)
+    : Base (resource) {}
 };
 
 } // namespace CGAL

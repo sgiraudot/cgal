@@ -616,7 +616,12 @@ No_intersection_surface_sweep_2<Vis>::_allocate_event(const Point_2& pt,
                                                       Arr_parameter_space ps_y)
 {
   // Allocate the event.
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER
+  Event* e = &*m_allocated_events.emplace
+    (m_monotonic_buffer->resource());
+#else
   Event* e = &*m_allocated_events.emplace();
+#endif
   e->init(pt, type, ps_x, ps_y);
   return e;
 }
@@ -632,7 +637,12 @@ _allocate_event_at_open_boundary(Attribute type,
                                  Arr_parameter_space ps_x,
                                  Arr_parameter_space ps_y)
 {
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER
+  Event* e = &*m_allocated_events.emplace
+    (m_monotonic_buffer->resource());
+#else
   Event* e = &*m_allocated_events.emplace();
+#endif
   e->init_at_open_boundary(type, ps_x, ps_y);
   return e;
 }

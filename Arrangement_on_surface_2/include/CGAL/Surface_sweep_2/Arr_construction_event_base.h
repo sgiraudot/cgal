@@ -108,6 +108,13 @@ public:
     m_right_curves_counter(0)
   {}
 
+  Arr_construction_event_base(cpp17::pmr::monotonic_buffer_resource* resource):
+    Base(resource),
+    m_halfedge(),
+    m_vertex(),
+    m_right_curves_counter(0)
+  {}
+
   /*! Destructor */
   ~Arr_construction_event_base() {}
 

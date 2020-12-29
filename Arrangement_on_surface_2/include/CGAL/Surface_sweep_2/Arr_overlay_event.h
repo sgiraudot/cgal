@@ -52,9 +52,22 @@ class Arr_overlay_event :
                                                           Allocator_>,
                                      Arrangement_>
 {
+  typedef Arr_construction_event_base<GeometryTraits_2,
+                                     Arr_overlay_subcurve<GeometryTraits_2,
+                                                          Arr_overlay_event<
+                                                            GeometryTraits_2,
+                                                            Arrangement_,
+                                                            Allocator_>,
+                                                          Allocator_>,
+                                     Arrangement_>
+  Base;
+
 public:
   /*! Construct default. */
   Arr_overlay_event() {}
+
+  Arr_overlay_event(cpp17::pmr::monotonic_buffer_resource* resource)
+    : Base (resource) {}
 };
 
 } // namespace CGAL

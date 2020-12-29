@@ -33,6 +33,11 @@
 #include <algorithm>
 #include <iterator>
 
+#if defined(CGAL_SS_USE_ALLOCATION_BUFFER) || defined(CGAL_SS_USE_ALLOCATION_BUFFER_MULTISET)
+#include <CGAL/pmr.h>
+#include <CGAL/size_of_list_node.h>
+#endif
+
 #ifndef CGAL_SS_VERBOSE
 
 #define CGAL_SS_DEBUG(a)
@@ -143,8 +148,13 @@ protected:
 public:
   typedef CGAL::Surface_sweep_2::Event_comparer<Traits_adaptor_2, Event>
                                                         Event_comparer;
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER_MULTISET
+  typedef Multiset<Event*, Event_comparer, cpp17::pmr::polymorphic_allocator<Event*>, Tag_false>
+                                                        Event_queue;
+#else
   typedef Multiset<Event*, Event_comparer, Allocator, Tag_true>
                                                         Event_queue;
+#endif
   typedef typename Event_queue::iterator                Event_queue_iterator;
 
   typedef typename Event::Subcurve_iterator
@@ -172,6 +182,12 @@ protected:
   bool m_traitsOwner;               // Whether this object was allocated by
                                     // this class (and thus should be freed).
 
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER
+  std::unique_ptr<Monotonic_buffer> m_monotonic_buffer;
+#endif
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER_MULTISET
+  std::unique_ptr<Monotonic_buffer> m_monotonic_buffer_multiset;
+#endif
   Event* m_currentEvent;            // The current event.
 
   Compare_curves m_statusLineCurveLess;
@@ -444,6 +460,7 @@ protected:
   void _init_indexed_curves(const EdgeRange& edges,
                             const Accessor& accessor)
   {
+    std::cerr << "init indexed curves" << std::endl;
     std::vector<Event_queue_iterator> events (accessor.nb_vertices());
 
     unsigned int index = 0;
@@ -470,6 +487,17 @@ protected:
   void _init_sweep(CurveInputIterator curves_begin,
                    CurveInputIterator curves_end)
   {
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER
+    m_monotonic_buffer = std::make_unique<Monotonic_buffer>(2.5 * size_of_list_node<Subcurve*>() * std::distance (curves_begin, curves_end));
+#endif
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER_MULTISET
+    m_monotonic_buffer_multiset
+      = std::make_unique<Monotonic_buffer>(2 * sizeof(typename Event_queue::Node_public) * std::distance (curves_begin, curves_end));
+    delete m_queue;
+    m_queue = new Event_queue (m_queueEventLess, m_monotonic_buffer_multiset->resource());
+#endif
+    // std::cerr << std::distance (curves_begin, curves_end)
+    //           << " edges, allocation = " << 2 * size_of_list_node<Subcurve*>() * std::distance (curves_begin, curves_end) << std::endl;
     m_num_of_subCurves =
       static_cast<unsigned int>(std::distance(curves_begin, curves_end));
     _init_structures();
@@ -481,6 +509,16 @@ protected:
   void _init_indexed_sweep(const EdgeRange& edges,
                            const Accessor& accessor)
   {
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER
+    m_monotonic_buffer = std::make_unique<Monotonic_buffer>(2.5 * size_of_list_node<Subcurve*>() * edges.size());
+#endif
+#ifdef CGAL_SS_USE_ALLOCATION_BUFFER_MULTISET
+    m_monotonic_buffer_multiset
+      = std::make_unique<Monotonic_buffer>(2 * sizeof(typename Event_queue::Node_public) * edges.size());
+    delete m_queue;
+    m_queue = new Event_queue (m_queueEventLess, m_monotonic_buffer_multiset->resource());
+#endif
+    // std::cerr << edges.size() << " edges, allocation = " << 2 * size_of_list_node<Subcurve*>() * edges.size() << std::endl;
     m_num_of_subCurves =
       static_cast<unsigned int>(std::distance(edges.begin(), edges.end()));
     _init_structures();

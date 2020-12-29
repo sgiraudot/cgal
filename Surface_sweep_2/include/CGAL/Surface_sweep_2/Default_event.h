@@ -60,9 +60,19 @@ class Default_event :
                                                            Allocator_>,
                                              Allocator_> >
 {
+  typedef Default_event_base<GeometryTraits_2,
+                            Default_subcurve<GeometryTraits_2,
+                                             Default_event<GeometryTraits_2,
+                                                           Allocator_>,
+                                             Allocator_> >
+  Base;
 public:
   /*! Construct default. */
   Default_event() {}
+
+  Default_event(cpp17::pmr::monotonic_buffer_resource* resource)
+    : Base (resource) {}
+
 };
 
 } // namespace Surface_sweep_2
