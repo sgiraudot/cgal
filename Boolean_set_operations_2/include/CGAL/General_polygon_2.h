@@ -35,12 +35,20 @@ public:
   typedef typename Traits_2::Point_2                 Point_2;
   typedef typename Traits_2::Curve_2                 Curve_2;
   typedef typename Traits_2::X_monotone_curve_2      X_monotone_curve_2;
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+  typedef std::vector<X_monotone_curve_2>              Containter;
+#else
   typedef std::list<X_monotone_curve_2>              Containter;
+#endif
   typedef typename Containter::iterator              Curve_iterator;
   typedef typename Containter::const_iterator        Curve_const_iterator;
 
 protected:
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+  std::vector<X_monotone_curve_2>    m_xcurves;
+#else
   std::list<X_monotone_curve_2>    m_xcurves;
+#endif
 
 public:
 
@@ -134,7 +142,11 @@ public:
 
   void reverse_orientation()
   {
+#ifdef CGAL_BO_USE_VECTOR_INSTEAD_OF_LIST
+    std::reverse (m_xcurves.begin(), m_xcurves.end());
+#else
     m_xcurves.reverse();
+#endif
     Traits_2 tr;
     typename Traits_2::Construct_opposite_2 ctr_opp =
       tr.construct_opposite_2_object();
