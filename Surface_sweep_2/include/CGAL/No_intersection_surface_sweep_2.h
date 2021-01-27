@@ -460,7 +460,7 @@ protected:
   void _init_indexed_curves(const EdgeRange& edges,
                             const Accessor& accessor)
   {
-    std::cerr << "init indexed curves" << std::endl;
+//    std::cerr << "init indexed curves" << std::endl;
     std::vector<Event_queue_iterator> events (accessor.nb_vertices());
 
     unsigned int index = 0;
